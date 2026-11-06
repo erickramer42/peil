@@ -1,0 +1,15 @@
+{"t_ns":1800000000000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}
+{"t_ns":1800000001000000000,"source":"kismet","kind":"ble_advert","addr":"AA:AA:AA:00:00:01","rssi_dbm":-58}
+{"t_ns":1800000002000000000,"source":"kismet","kind":"ble_advert","addr":"bb:bb:bb:00:00:02","rssi_dbm":-81}
+{"t_ns":1800000003000000000,"source":"kismet","kind":"ble_advert","addr":"cc:cc:cc:00:00:03","rssi_dbm":-70}
+{"t_ns":1800000004000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0A1B2C3D","rssi_dbm":-12.5}
+{"t_ns":1800000600000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.01,"lon_deg":10.0}
+{"t_ns":1800000601000000000,"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-60}
+{"t_ns":1800000603000000000,"source":"kismet","kind":"ble_advert","addr":"cc:cc:cc:00:00:03","rssi_dbm":-72}
+{"t_ns":1800000604000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-13.0}
+{"t_ns":1800001200000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.02,"lon_deg":10.0}
+{"t_ns":1800001201000000000,"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-57}
+{"t_ns":1800001204000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-12.0}
+{"t_ns":1800001800000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.03,"lon_deg":10.0}
+{"t_ns":1800001801000000000,"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01"}
+{"t_ns":1800001900000000000,"source":"kismet","kind":"ble_advert","addr":"dd:dd:dd:00:00:04","rssi_dbm":-77}

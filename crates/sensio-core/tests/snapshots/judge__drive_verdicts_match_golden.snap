@@ -1,0 +1,63 @@
+---
+source: crates/sensio-core/tests/judge.rs
+expression: verdicts
+---
+[
+  {
+    "device": "ble:aa:aa:aa:00:00:01",
+    "rule": "persistence.places",
+    "rule_set_version": 1,
+    "first_seen_ns": 1800000001000000000,
+    "last_seen_ns": 1800001801000000000,
+    "sightings": 4,
+    "unlocated_sightings": 0,
+    "places": [
+      {
+        "first_seen_ns": 1800000001000000000,
+        "lat_deg": 60.0,
+        "lon_deg": 10.0
+      },
+      {
+        "first_seen_ns": 1800000601000000000,
+        "lat_deg": 60.01,
+        "lon_deg": 10.0
+      },
+      {
+        "first_seen_ns": 1800001201000000000,
+        "lat_deg": 60.02,
+        "lon_deg": 10.0
+      },
+      {
+        "first_seen_ns": 1800001801000000000,
+        "lat_deg": 60.03,
+        "lon_deg": 10.0
+      }
+    ]
+  },
+  {
+    "device": "tpms:0a1b2c3d",
+    "rule": "persistence.places",
+    "rule_set_version": 1,
+    "first_seen_ns": 1800000004000000000,
+    "last_seen_ns": 1800001204000000000,
+    "sightings": 3,
+    "unlocated_sightings": 0,
+    "places": [
+      {
+        "first_seen_ns": 1800000004000000000,
+        "lat_deg": 60.0,
+        "lon_deg": 10.0
+      },
+      {
+        "first_seen_ns": 1800000604000000000,
+        "lat_deg": 60.01,
+        "lon_deg": 10.0
+      },
+      {
+        "first_seen_ns": 1800001204000000000,
+        "lat_deg": 60.02,
+        "lon_deg": 10.0
+      }
+    ]
+  }
+]

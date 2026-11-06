@@ -1,0 +1,15 @@
+[package]
+name = "sensio-sources"
+description = "Adapters from the sensor tier (Kismet, rtl_433, gpsd) to the event schema"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+sensio-core.workspace = true
+
+[lints]
+workspace = true
