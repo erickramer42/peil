@@ -14,4 +14,4 @@ If Peil is ever distributed together with any of them, that distribution meets t
 
 ## Rust crates
 
-Peil's binaries are built from crates on crates.io, each under its own license (most under MIT or Apache-2.0). `Cargo.lock` pins the exact versions; `cargo metadata` lists each crate's license. A generated list joins this file with the first binary release.
+Peil's binaries are built from crates on crates.io, each under its own license (most under MIT or Apache-2.0). `Cargo.lock` pins the exact versions; `cargo metadata` lists each crate's license. CI's `deny` job checks every crate against the allowlist in `deny.toml`, which admits no GPL, LGPL or AGPL license (ADR-0001 section 2). A generated list joins this file with the first binary release.

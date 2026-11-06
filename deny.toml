@@ -1,0 +1,46 @@
+# cargo-deny's policy (`cargo deny check`). It guards ADR-0001 section 2:
+# Peil links none of the sensor tier's code, and every dependency's own
+# license leaves Peil's code MIT.
+
+[graph]
+# Every target platform, with all features: the widest graph a build can pull.
+targets = []
+all-features = true
+
+[advisories]
+# RustSec vulnerabilities fail by default. An ignore needs the advisory ID,
+# a reason, and a date to look again.
+yanked = "deny"
+ignore = []
+
+[licenses]
+# The minimum the graph needs. Never a GPL, LGPL or AGPL license: allowing
+# one is a change to ADR-0001 section 2, not to this file. An expression
+# with an allowed alternative passes on it (`MIT OR LGPL-2.1-or-later`).
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # unicode-ident: (MIT OR Apache-2.0) AND Unicode-3.0
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[licenses.private]
+# The workspace's own crates are checked like any other.
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# The workspace's own path dependencies carry no version.
+allow-wildcard-paths = true
+# A crate refused for binding the sensor tier is listed here with its reason.
+deny = []
+
+[sources]
+# crates.io only.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
