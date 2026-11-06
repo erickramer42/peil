@@ -6,7 +6,7 @@ Status: Accepted
 
 Detecting Wi-Fi and BLE devices, logging them and decoding sub-GHz transmissions is solved. Kismet captures Wi-Fi and BLE (including through dedicated sniffers), keeps device records, and serves them over a REST API, an event stream and a pcapng packet stream. rtl_433 decodes hundreds of sub-GHz devices, tire-pressure sensors among them, to JSON. gpsd serves position and time. Rebuilding any of them would cost years and give a worse result.
 
-What none of them answers is the question Peil exists for: is a device in this place, or traveling with it, that shouldn't be? The place is a vehicle (moving or parked) or a building (a home, an office, a hotel room). Answering it takes:
+What none of them answers is the question Peil exists for: what is unusual in this place, or traveling with this vehicle, right now, and should the person using Peil care? The place is a vehicle (moving or parked) or a building (a home, an office, a hotel room). Peil is an anomaly detector for the emitters and the sensor context around it. Rules about devices (persistence across places, co-travel, a newcomer that stays overnight) are one family of anomaly evidence inside that question, not the whole of it. Answering it takes:
 
 - linking a BLE device across its address rotations,
 - fusing sources (a BLE device and four TPMS sensors moving together are one car),
@@ -15,7 +15,6 @@ What none of them answers is the question Peil exists for: is a device in this p
 - verdicts that are deterministic and explain themselves,
 - context: for a vehicle, whether it's moving or parked and its ignition; for a building, a baseline of what normally belongs there,
 - and a display fit for a car or a walk through a building.
-
 ## Decision
 
 1. **Peil captures nothing itself.** Kismet, rtl_433 and gpsd are the sensor tier. Peil reads their output as a separate process: HTTP and websockets for Kismet, a pipe for rtl_433, a TCP socket for gpsd.
