@@ -101,12 +101,18 @@ pub enum ParseError {
         source: std::io::Error,
     },
     /// The line isn't a valid event.
-    #[error("line {line}: {source}")]
+    ///
+    /// The reason never quotes a value from the input: those are a
+    /// stranger's (a device's address, say), and an error message is what
+    /// gets pasted into an issue.
+    #[error("line {line}, column {column}: {reason}")]
     Json {
         /// The 1-based line number.
         line: usize,
-        /// The underlying error.
-        source: serde_json::Error,
+        /// The 1-based column where the parser stopped.
+        column: usize,
+        /// What's wrong, without the input's values.
+        reason: String,
     },
     /// The line parsed but a value is out of range.
     #[error("line {line}: {reason}")]
@@ -135,9 +141,10 @@ pub fn parse_jsonl(reader: impl BufRead) -> Result<Vec<Event>, ParseError> {
         if text.trim().is_empty() {
             continue;
         }
-        let event: Event = serde_json::from_str(&text).map_err(|source| ParseError::Json {
+        let event: Event = serde_json::from_str(&text).map_err(|err| ParseError::Json {
             line: line_no,
-            source,
+            column: err.column(),
+            reason: reason_without_values(&err),
         })?;
         validate(&event).map_err(|reason| ParseError::Invalid {
             line: line_no,
@@ -146,6 +153,36 @@ pub fn parse_jsonl(reader: impl BufRead) -> Result<Vec<Event>, ParseError> {
         events.push(event);
     }
     Ok(events)
+}
+
+/// `serde_json`'s reason for rejecting a line, without any value it quoted.
+///
+/// Syntax and end-of-input errors are fixed text and pass through. Data
+/// errors come from serde and can quote the input (`invalid type: string
+/// "...", expected i16`, ``unknown variant `...`, expected one of ...``):
+/// those keep their kind and the schema's "expected" part, and lose the
+/// value. The "expected" part is found from the end, because serde writes it
+/// after the value, and a value can itself contain ", expected ".
+fn reason_without_values(err: &serde_json::Error) -> String {
+    let message = err.to_string();
+    // `serde_json` appends " at line L column C"; the line and column are kept apart.
+    let message = message
+        .rsplit_once(" at line ")
+        .map_or(message.as_str(), |(head, _)| head);
+    if err.classify() != serde_json::error::Category::Data
+        // These name one of the schema's own fields, never a value.
+        || message.starts_with("missing field ")
+        || message.starts_with("duplicate field ")
+    {
+        return message.to_owned();
+    }
+    let (head, expected) = message
+        .rfind(", expected ")
+        .map_or((message, ""), |i| message.split_at(i));
+    match head.find(['"', '`']) {
+        Some(quote) => format!("{} (value left out){expected}", head[..quote].trim_end()),
+        None => format!("{head}{expected}"),
+    }
 }
 
 fn validate(event: &Event) -> Result<(), &'static str> {

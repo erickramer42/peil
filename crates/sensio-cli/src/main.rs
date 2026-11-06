@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use sensio_core::{PersistenceRule, judge, parse_jsonl};
 
@@ -59,6 +59,8 @@ fn main() -> Result<()> {
                 max_fix_age_ns: max_fix_age_s
                     .map_or(defaults.max_fix_age_ns, |s| i64::from(s) * NS_PER_S),
             };
+            rule.validate()
+                .map_err(|reason| anyhow!("invalid rule parameters: {reason}"))?;
             let file = File::open(&path).with_context(|| format!("opening {}", path.display()))?;
             let events = parse_jsonl(BufReader::new(file))
                 .with_context(|| format!("reading {}", path.display()))?;

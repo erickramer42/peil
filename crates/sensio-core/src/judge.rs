@@ -33,6 +33,34 @@ pub struct PersistenceRule {
     pub max_fix_age_ns: TimeNs,
 }
 
+impl PersistenceRule {
+    /// Checks that the parameters describe a rule the judge can apply.
+    ///
+    /// A separation of zero or less would make every located sighting a new
+    /// place (and the places scan quadratic); a NaN separation would make no
+    /// second place possible; zero places would let a verdict carry no place
+    /// as evidence.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first parameter out of range, and why.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if self.min_places == 0 {
+            return Err("min_places must be at least 1");
+        }
+        if self.min_span_ns < 0 {
+            return Err("min_span_ns must not be negative");
+        }
+        if !self.place_separation_m.is_finite() || self.place_separation_m <= 0.0 {
+            return Err("place_separation_m must be a finite number of meters above 0");
+        }
+        if self.max_fix_age_ns < 0 {
+            return Err("max_fix_age_ns must not be negative");
+        }
+        Ok(())
+    }
+}
+
 impl Default for PersistenceRule {
     fn default() -> Self {
         Self {
@@ -85,6 +113,9 @@ struct Track {
 }
 
 /// Judges a session's events and returns its verdicts, ordered by device.
+///
+/// The rule should pass [`PersistenceRule::validate`]; front ends check it
+/// before calling the judge.
 #[must_use]
 pub fn judge(events: &[Event], rule: &PersistenceRule) -> Vec<Verdict> {
     let mut order: Vec<usize> = (0..events.len()).collect();
