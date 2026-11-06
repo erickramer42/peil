@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/ygcxo/peil-rf"
+repository = "https://github.com/erickramer42/peil"
 publish = false
 
 [workspace.dependencies]
