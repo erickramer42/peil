@@ -1,0 +1,306 @@
+//! The live judge over a structured feed, against a model of ADR-0005: the
+//! target builds feed lines (many valid, some not), tracks what the core
+//! should accept and the time it should give each event, and checks that
+//! every answer is `judge()` over exactly those events, with the same
+//! number of rejections and torn lines.
+
+#![no_main]
+
+use std::collections::BTreeMap;
+
+use arbitrary::Arbitrary;
+use libfuzzer_sys::fuzz_target;
+use sensio_core::event::is_label;
+use sensio_core::feed::{ClockBasis, FEED_SCHEMA, FeedLine, VerdictLine};
+use sensio_core::{Event, EventKind, Live, TimeNs, Verdict, judge, run};
+use sensio_fuzz::{Kind, Rule, Time};
+use sensio_sources::Sources;
+
+const RECEIVERS: [&str; 5] = ["phone", "thinkpad", "rear-pi", "Rear Pi", ""];
+const BOOT_TO_UTC: TimeNs = 1_799_999_998_000_000_000;
+const MAX_OPS: usize = 500;
+
+#[derive(Arbitrary, Debug)]
+enum Utc {
+    /// The session's own mapping from boot time.
+    Consistent,
+    Raw(i64),
+}
+
+#[derive(Arbitrary, Debug)]
+enum Seq {
+    /// This many past the last one.
+    Next(u8),
+    Raw(u64),
+}
+
+#[derive(Arbitrary, Debug)]
+enum Remote {
+    /// A receiver whose clock runs 5 s ahead of the phone's.
+    Ahead,
+    Raw(i64),
+}
+
+#[derive(Arbitrary, Debug)]
+enum Op {
+    Clock(Time, Utc),
+    Offset(u8, Option<i64>, i64),
+    Line {
+        seq: Seq,
+        boot: Time,
+        receiver: Option<u8>,
+        remote: Option<Remote>,
+        kind: Kind,
+        withheld: bool,
+    },
+    Judge(Time),
+    Dropped(Option<u8>, u64),
+    Slept(Time, i64),
+    /// Never a feed line: it starts with '#'.
+    Garbage(Vec<u8>),
+    Blank(u8),
+}
+
+#[derive(Arbitrary, Debug)]
+struct Session {
+    all: bool,
+    rule: Option<Rule>,
+    ops: Vec<Op>,
+    torn_tail: Option<Vec<u8>>,
+}
+
+#[derive(Default)]
+struct Model {
+    clock: Option<(TimeNs, TimeNs)>,
+    offsets: BTreeMap<String, TimeNs>,
+    last_seq: Option<u64>,
+    events: Vec<Event>,
+    rejected: usize,
+    answers: Vec<Vec<Verdict>>,
+}
+
+impl Model {
+    fn utc(&self, boot: TimeNs, remote: Option<TimeNs>, receiver: Option<&str>) -> Option<TimeNs> {
+        let (clock_boot, clock_utc) = self.clock?;
+        let boot = match (remote, receiver.and_then(|r| self.offsets.get(r))) {
+            (Some(remote), Some(&offset)) => remote.checked_add(offset)?,
+            _ => boot,
+        };
+        clock_utc
+            .checked_add(boot.checked_sub(clock_boot)?)
+            .filter(|&t| t >= 0)
+    }
+}
+
+fn receiver(r: u8) -> String {
+    RECEIVERS[usize::from(r) % RECEIVERS.len()].to_owned()
+}
+
+fn json(line: &FeedLine) -> Vec<u8> {
+    serde_json::to_vec(line).expect("a feed line serializes")
+}
+
+fuzz_target!(|session: Session| {
+    let rule = session
+        .rule
+        .map(Rule::rule)
+        .filter(|r| r.validate().is_ok())
+        .unwrap_or_default();
+    let mut model = Model::default();
+    let mut cursor: TimeNs = 0;
+    let mut feed = json(&FeedLine::Start {
+        schema: FEED_SCHEMA.to_owned(),
+        app: "fuzz".to_owned(),
+        boot_ns: 0,
+    });
+    feed.push(b'\n');
+
+    for op in session.ops.iter().take(MAX_OPS) {
+        let line = match op {
+            Op::Clock(boot, utc) => {
+                let boot_ns = boot.at(&mut cursor);
+                let utc_ns = match utc {
+                    Utc::Consistent => boot_ns.saturating_add(BOOT_TO_UTC),
+                    Utc::Raw(t) => *t,
+                };
+                if boot_ns < 0 || utc_ns < 0 {
+                    model.rejected += 1;
+                } else {
+                    model.clock = Some((boot_ns, utc_ns));
+                }
+                json(&FeedLine::Clock {
+                    boot_ns,
+                    utc_ns,
+                    basis: ClockBasis::Gnss,
+                })
+            }
+            Op::Offset(r, offset, uncertainty_ns) => {
+                let receiver = receiver(*r);
+                let offset_ns = offset.unwrap_or(-5_000_000_000);
+                if !is_label(&receiver) || *uncertainty_ns < 0 {
+                    model.rejected += 1;
+                } else {
+                    model.offsets.insert(receiver.clone(), offset_ns);
+                }
+                json(&FeedLine::Offset {
+                    receiver,
+                    offset_ns,
+                    uncertainty_ns: *uncertainty_ns,
+                })
+            }
+            Op::Line {
+                seq,
+                boot,
+                receiver: r,
+                remote,
+                kind,
+                withheld,
+            } => {
+                let seq = match seq {
+                    Seq::Next(n) => model
+                        .last_seq
+                        .map_or(0, |last| last.saturating_add(1 + u64::from(*n))),
+                    Seq::Raw(s) => *s,
+                };
+                let boot_ns = boot.at(&mut cursor);
+                let receiver = r.map(receiver);
+                let remote_ns = remote.as_ref().map(|remote| match remote {
+                    Remote::Ahead => boot_ns.saturating_add(5_000_000_000),
+                    Remote::Raw(t) => *t,
+                });
+                let raw = serde_json::to_string(&kind.event_kind()).expect("a kind serializes");
+                let line = json(&FeedLine::Line {
+                    seq,
+                    boot_ns,
+                    source: "sensio".to_owned(),
+                    receiver: receiver.clone(),
+                    remote_ns,
+                    raw: raw.clone(),
+                    withheld: *withheld,
+                });
+                if receiver.as_deref().is_some_and(|r| !is_label(r))
+                    || model.last_seq.is_some_and(|last| seq <= last)
+                {
+                    model.rejected += 1;
+                } else {
+                    model.last_seq = Some(seq);
+                    if !*withheld || session.all {
+                        let t_ns = (boot_ns >= 0 && remote_ns.is_none_or(|t| t >= 0))
+                            .then(|| model.utc(boot_ns, remote_ns, receiver.as_deref()))
+                            .flatten();
+                        // The normalizer's own parse: a non-finite float was written as null.
+                        let parsed: Option<EventKind> = serde_json::from_str(&raw).ok();
+                        let event = t_ns.zip(parsed).map(|(t_ns, kind)| Event {
+                            t_ns,
+                            source: "sensio".to_owned(),
+                            receiver,
+                            kind,
+                        });
+                        match event.filter(|e| e.validate().is_ok()) {
+                            Some(event) => model.events.push(event),
+                            None => model.rejected += 1,
+                        }
+                    }
+                }
+                line
+            }
+            Op::Judge(boot) => {
+                let boot_ns = boot.at(&mut cursor);
+                if boot_ns < 0 {
+                    model.rejected += 1;
+                } else {
+                    model.answers.push(judge(&model.events, &rule));
+                }
+                json(&FeedLine::Judge { boot_ns })
+            }
+            Op::Dropped(r, lines) => {
+                let receiver = r.map(receiver);
+                if receiver.as_deref().is_some_and(|r| !is_label(r)) {
+                    model.rejected += 1;
+                }
+                json(&FeedLine::Dropped {
+                    source: "sensio".to_owned(),
+                    receiver,
+                    lines: *lines,
+                })
+            }
+            Op::Slept(boot, slept_ns) => {
+                let boot_ns = boot.at(&mut cursor);
+                if boot_ns < 0 || *slept_ns < 0 {
+                    model.rejected += 1;
+                }
+                json(&FeedLine::Slept {
+                    boot_ns,
+                    slept_ns: *slept_ns,
+                })
+            }
+            Op::Garbage(bytes) => {
+                model.rejected += 1;
+                let mut line = vec![b'#'];
+                line.extend(bytes.iter().filter(|&&b| b != b'\n'));
+                line
+            }
+            Op::Blank(n) => [b"".as_slice(), b" ", b"\r", b"\t "][usize::from(n % 4)].to_vec(),
+        };
+        feed.extend_from_slice(&line);
+        feed.push(b'\n');
+    }
+    let torn = session.torn_tail.as_ref().map(|tail| {
+        feed.push(b'#');
+        feed.extend(tail.iter().filter(|&&b| b != b'\n'));
+    });
+
+    let mut lines = Vec::new();
+    run(
+        Live::new(Sources, rule.clone(), session.all),
+        &feed[..],
+        |line| {
+            lines.push(line.clone());
+            Ok(())
+        },
+    )
+    .expect("a feed that starts with start is judged");
+
+    let answers: Vec<Vec<Verdict>> = lines
+        .iter()
+        .filter_map(|line| match line {
+            VerdictLine::Verdicts { verdicts, .. } => Some(verdicts.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        answers, model.answers,
+        "an answer isn't the judge over the model's events"
+    );
+    let rejected = lines
+        .iter()
+        .filter(|l| matches!(l, VerdictLine::Rejected { .. }))
+        .count();
+    if rejected != model.rejected {
+        let text = String::from_utf8_lossy(&feed);
+        let feed_lines: Vec<&str> = text.split('\n').collect();
+        for line in &lines {
+            if let VerdictLine::Rejected {
+                feed_line, reason, ..
+            } = line
+            {
+                eprintln!(
+                    "rejected {feed_line}: {reason}: {}",
+                    feed_lines[feed_line - 1]
+                );
+            }
+        }
+    }
+    assert_eq!(
+        rejected, model.rejected,
+        "rejections differ from the model's"
+    );
+    let Some(VerdictLine::End { events, .. }) = lines.last() else {
+        panic!("no end line");
+    };
+    assert_eq!(*events, model.events.len());
+    let Some(VerdictLine::Coverage(coverage)) = lines.iter().rev().nth(1) else {
+        panic!("no final coverage");
+    };
+    assert_eq!(coverage.torn, u64::from(torn.is_some()));
+});

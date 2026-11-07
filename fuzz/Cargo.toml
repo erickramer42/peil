@@ -1,0 +1,59 @@
+[package]
+name = "sensio-fuzz"
+description = "Fuzz targets for the core's parsers of hostile input"
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+# Its own workspace: the main one never builds libfuzzer-sys, which needs nightly.
+[workspace]
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+sensio-core = { path = "../crates/sensio-core" }
+sensio-sources = { path = "../crates/sensio-sources" }
+# Exact float round trips, so a parsed-then-written event compares equal.
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[[bin]]
+name = "parse_jsonl"
+path = "fuzz_targets/parse_jsonl.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "judge_events"
+path = "fuzz_targets/judge_events.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "bounded_line"
+path = "fuzz_targets/bounded_line.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "live_feed"
+path = "fuzz_targets/live_feed.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "live_session"
+path = "fuzz_targets/live_session.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1
