@@ -14,16 +14,19 @@ yanked = "deny"
 ignore = []
 
 [licenses]
-# The minimum the graph needs. Never a GPL, LGPL or AGPL license: allowing
-# one is a change to ADR-0001 section 2, not to this file. An expression
-# with an allowed alternative passes on it (`MIT OR LGPL-2.1-or-later`).
+# Everything that ships is used under MIT, Peil's own license. An expression
+# with an allowed alternative passes on it (`MIT OR Apache-2.0`), so a crate
+# offered only under another license needs a deliberate change here. Never a
+# GPL, LGPL or AGPL license: allowing one is a change to ADR-0001 section 2.
+# Dev-dependencies never ship and aren't checked (`include-dev`, below).
 allow = [
     "MIT",
-    "Apache-2.0",
     # unicode-ident: (MIT OR Apache-2.0) AND Unicode-3.0
     "Unicode-3.0",
 ]
 confidence-threshold = 0.8
+# Stated rather than left to the default: insta and similar are Apache-2.0 only.
+include-dev = false
 exceptions = []
 
 [licenses.private]
