@@ -62,5 +62,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "kismet_device"
+path = "fuzz_targets/kismet_device.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

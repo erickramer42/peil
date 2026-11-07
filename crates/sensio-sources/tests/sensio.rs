@@ -40,7 +40,7 @@ fn a_bad_sensio_line_is_rejected_without_quoting_it() {
 #[test]
 fn a_source_with_no_normalizer_is_rejected() {
     assert_eq!(
-        Sources.normalize("kismet", "{}"),
+        Sources.normalize("rtl_433", "{}"),
         Err("no normalizer for this source".to_owned())
     );
 }

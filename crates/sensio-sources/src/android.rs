@@ -23,10 +23,11 @@
 
 use sensio_core::EventKind;
 use sensio_core::event::{
-    MAX_ADVERT_ENTRIES, ManufacturerData, ServiceData, WifiProtocol, WifiSecurity,
-    reason_without_values,
+    MAX_ADVERT_ENTRIES, ManufacturerData, ServiceData, is_wifi_freq, reason_without_values,
 };
 use serde::Deserialize;
+
+use crate::wifi;
 
 /// The feed's name for this source.
 pub const SOURCE: &str = "android";
@@ -79,7 +80,7 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
             Ok(vec![EventKind::BleAdvert {
                 addr,
                 // Android reports 127 when it has no strength for a result.
-                rssi_dbm: rssi.filter(|r| (-127..=20).contains(r)),
+                rssi_dbm: wifi::dbm(rssi),
                 manufacturer_data,
                 service_data,
                 service_uuids,
@@ -99,36 +100,10 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
 fn wifi(result: WifiResult) -> EventKind {
     EventKind::WifiAp {
         bssid: result.bssid,
-        ssid: result.ssid.filter(|s| (1..=32).contains(&s.len())),
-        freq_mhz: result.freq.filter(|&f| {
-            (2400..=2500).contains(&f) || (4900..=5900).contains(&f) || (5925..=7125).contains(&f)
-        }),
-        rssi_dbm: result.level.filter(|l| (-127..=20).contains(l)),
-        security: result.caps.as_deref().map(security),
-    }
-}
-
-/// The strongest protocol in Android's capabilities string, and whether it's
-/// enterprise (802.1X, `EAP`). A WPA2/WPA3 transition network (`PSK+SAE`)
-/// reads as WPA3.
-fn security(caps: &str) -> WifiSecurity {
-    let caps = caps.to_ascii_uppercase();
-    let protocol = if caps.contains("SAE") || caps.contains("WPA3") || caps.contains("SUITE_B") {
-        WifiProtocol::Wpa3
-    } else if caps.contains("OWE") {
-        WifiProtocol::Owe
-    } else if caps.contains("RSN") || caps.contains("WPA2") {
-        WifiProtocol::Wpa2
-    } else if caps.contains("WPA") {
-        WifiProtocol::Wpa
-    } else if caps.contains("WEP") {
-        WifiProtocol::Wep
-    } else {
-        WifiProtocol::Open
-    };
-    WifiSecurity {
-        protocol,
-        enterprise: caps.contains("EAP"),
+        ssid: wifi::ssid(result.ssid),
+        freq_mhz: result.freq.filter(|&f| is_wifi_freq(f)),
+        rssi_dbm: wifi::dbm(result.level),
+        security: result.caps.as_deref().map(wifi::security),
     }
 }
 

@@ -12,7 +12,9 @@
 use sensio_core::{EventKind, Normalize};
 
 pub mod android;
+pub mod kismet;
 pub mod sensio;
+mod wifi;
 
 /// The normalizers, chosen by a feed line's `source`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -22,6 +24,7 @@ impl Normalize for Sources {
     fn normalize(&self, source: &str, raw: &str) -> Result<Vec<EventKind>, String> {
         match source {
             android::SOURCE => android::normalize(raw),
+            kismet::SOURCE => kismet::normalize(raw),
             sensio::SOURCE => sensio::normalize(raw),
             _ => Err("no normalizer for this source".to_owned()),
         }

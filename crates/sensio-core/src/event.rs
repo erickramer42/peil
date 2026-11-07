@@ -284,7 +284,8 @@ pub fn reason_without_values(err: &serde_json::Error) -> String {
 }
 
 /// Whether `s` is a 48-bit address written `xx:xx:xx:xx:xx:xx` in hex, either case.
-fn is_mac(s: &str) -> bool {
+#[must_use]
+pub fn is_mac(s: &str) -> bool {
     let bytes = s.as_bytes();
     bytes.len() == 17
         && bytes.iter().enumerate().all(|(i, &b)| {
@@ -297,7 +298,8 @@ fn is_mac(s: &str) -> bool {
 }
 
 /// Whether `mhz` is a center frequency inside a Wi-Fi band (2.4, 5 or 6 GHz).
-fn is_wifi_freq(mhz: u32) -> bool {
+#[must_use]
+pub fn is_wifi_freq(mhz: u32) -> bool {
     (2400..=2500).contains(&mhz) || (4900..=5900).contains(&mhz) || (5925..=7125).contains(&mhz)
 }
 
@@ -310,13 +312,15 @@ pub const MAX_ADVERT_ENTRIES: usize = 32;
 pub const MAX_ADVERT_DATA_BYTES: usize = 255;
 
 /// Whether `s` is hex for at most `max_bytes` bytes, either case.
-fn is_hex_bytes(s: &str, max_bytes: usize) -> bool {
+#[must_use]
+pub fn is_hex_bytes(s: &str, max_bytes: usize) -> bool {
     s.len() % 2 == 0 && s.len() <= 2 * max_bytes && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Whether `s` is a Bluetooth UUID: 4 or 8 hex digits, or the 36-character
 /// form of a 128-bit UUID (`8-4-4-4-12` hex digits), either case.
-fn is_uuid(s: &str) -> bool {
+#[must_use]
+pub fn is_uuid(s: &str) -> bool {
     let bytes = s.as_bytes();
     match bytes.len() {
         4 | 8 => bytes.iter().all(u8::is_ascii_hexdigit),
