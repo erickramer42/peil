@@ -50,6 +50,41 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo check --workspace --all-targets --locked
 
+  # The fuzz targets (fuzz/, a workspace of its own): every one builds on each
+  # push, so they keep compiling as the core moves, and each runs for 60 s with
+  # debug assertions. The nightly is pinned by date so a red run reproduces; a
+  # crash's input is printed in the log (libFuzzer's "Base64:" line).
+  fuzz:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fuzz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: nightly-2026-11-07
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: fuzz
+      - run: cargo install cargo-fuzz --version 0.13.2 --locked
+      # cargo fuzz has no --locked: fetch with it, then check the build left the lock alone.
+      - run: cargo fetch --locked
+      - run: cargo fuzz build -a
+      - run: git diff --exit-code Cargo.lock
+      - name: Run each target for 60 s
+        run: |
+          targets=$(cargo fuzz list)
+          test -n "$targets" || { echo "no fuzz targets found"; exit 1; }
+          for t in $targets; do
+            mkdir -p "corpus/$t"
+            dirs="corpus/$t"
+            if [ -d "seeds/$t" ]; then dirs="$dirs seeds/$t"; fi
+            echo "::group::$t"
+            cargo fuzz run -a "$t" $dirs -- -max_total_time=60 -timeout=5 -rss_limit_mb=1024
+            echo "::endgroup::"
+          done
+
   # The GPL boundary (ADR-0001 section 2) and RustSec, per deny.toml. Advisories
   # run apart: a new advisory can turn CI red with no change here, and the job
   # name then says so.
