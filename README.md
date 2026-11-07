@@ -15,9 +15,10 @@ An early scaffold. What works today:
 - `peil judge <events.jsonl>`: one verdict per line, as JSON.
 - `peil describe <events.jsonl>`: the emitter picture, one description per line, loud first: each emitter's kind, signal band (strength, never distance), sightings per receiver, vendor block from a registry you supply (`--vendors`, the IEEE's MA-L, MA-M and MA-S lists), the tracker network its advert's format names (Apple Find My, Google's Find Hub network, DULT), and an access point's security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)). `peil live` writes the same picture as an `emitters` line before each answer's verdicts.
 - `peil live [feed]`: reads a live feed from a file or stdin and answers each request in it with the verdicts over the events before it ([ADR-0005](docs/adr/0005-live-feed-and-verdict-stream.md)). A saved feed replays to the same bytes. Its sources so far are `sensio`, a normalized event carried as a raw line, and `android`, the app's raw lines: Wi-Fi scan results with their security, BLE scan results with the advert's bytes parsed into manufacturer data, service data and service UUIDs (the name left out), and location fixes.
+- The Android app in `android/` ([ADR-0004](docs/adr/0004-android-app.md)), a first scaffold: a session runs as a foreground service reading the phone's Wi-Fi scans, BLE scans and GNSS fixes, writes every raw line to a saved feed on the phone (kept for 1, 7 or 30 days, or deleted all at once), and runs the core as a process inside the app, which draws the emitter picture as a ring: one dot per recent emitter, its ring the signal-strength band (strength, never distance), its sector its kind (never a direction), trackers in red; the loudest emitters are listed beside it. The screen stays on while a session runs.
 - Golden verdicts for a synthetic drive, as events and as a feed; property tests that verdicts don't depend on input order and that each live answer is the judge over the events before it.
 
-Not built yet: hardware categories beyond trackers, the Android app, the Kismet, rtl_433 and gpsd adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
+Not built yet: hardware categories beyond trackers, the app's release signing, CI build and in-app license notices, the laptop link, find mode, the Kismet, rtl_433 and gpsd adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
 
 ## How it fits together
 
@@ -54,6 +55,15 @@ Fuzz targets for the parsers of untrusted input (the event lines, the feed, the 
 cd fuzz
 cargo +nightly fuzz list
 cargo +nightly fuzz run -a live_session -- -max_total_time=600
+```
+
+The Android app needs a JDK (17 or newer), the Android SDK with an NDK, and the Rust target `aarch64-linux-android`. `build-core.sh` builds the core and places it where the app packages it:
+
+```sh
+rustup target add aarch64-linux-android
+export ANDROID_SDK_ROOT=<the SDK>
+android/build-core.sh
+cd android && ./gradlew assembleDebug testDebugUnitTest
 ```
 
 Golden verdicts are [insta](https://insta.rs) snapshots. After a deliberate rule change, review the new ones with `cargo insta review` (from `cargo install cargo-insta`) and bump `RULE_SET_VERSION`.

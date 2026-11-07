@@ -1,0 +1,49 @@
+package io.github.erickramer42.sensio
+
+import android.content.Context
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * The saved feeds, in the app's private storage (ADR-0004 section 7): every
+ * raw line from the first session, kept for the retention period the user
+ * sets and deleted all at once on request. They hold other people's
+ * identifiers and the user's movements, so they never leave the phone from
+ * here.
+ */
+object Recordings {
+    private const val PREFS = "recordings"
+    private const val RETENTION = "retention_days"
+    val RETENTION_CHOICES = listOf(1, 7, 30)
+
+    fun dir(context: Context): File = File(context.filesDir, "feeds").apply { mkdirs() }
+
+    fun newFeed(context: Context): File =
+        File(dir(context), SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date()) + ".feed")
+
+    fun files(context: Context): List<File> = dir(context).listFiles()?.filter { it.isFile }.orEmpty()
+
+    fun retentionDays(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt(RETENTION, 7)
+
+    fun setRetentionDays(context: Context, days: Int) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(RETENTION, days).apply()
+
+    /** Deletes the feeds older than the retention period. */
+    fun prune(context: Context) {
+        val cutoff = System.currentTimeMillis() - retentionDays(context) * 86_400_000L
+        files(context).filter { it.lastModified() < cutoff }.forEach { it.delete() }
+    }
+
+    /** Deletes every saved feed; returns how many. */
+    fun deleteAll(context: Context): Int = files(context).count { it.delete() }
+
+    fun coreBinary(context: Context): File = File(context.applicationInfo.nativeLibraryDir, "libsensio.so")
+}
+
+object BuildInfo {
+    fun version(context: Context): String =
+        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "unknown"
+}

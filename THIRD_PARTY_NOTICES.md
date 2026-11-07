@@ -12,6 +12,10 @@ Peil reads the output of these programs across a process boundary. It doesn't li
 
 If Peil is ever distributed together with any of them, that distribution meets their licenses for those programs and lists them here.
 
+## The Android app
+
+The APK ships one third-party library, the Kotlin standard library (`org.jetbrains.kotlin:kotlin-stdlib`, Apache-2.0), which every Kotlin program ships; everything else it uses is Android's own platform API ([ADR-0004](docs/adr/0004-android-app.md) section 8). Build and test tools (Gradle, the Android Gradle plugin, JUnit) never ship in the APK.
+
 ## Rust crates
 
 Peil's binaries are built from crates on crates.io, each under its own license. Every crate they ship offers MIT and is used under it (`unicode-ident` also needs Unicode-3.0). `Cargo.lock` pins the exact versions; `cargo metadata` lists each crate's license. CI's `deny` job checks every crate against the allowlist in `deny.toml`, which admits no GPL, LGPL or AGPL license (ADR-0001 section 2). A generated list joins this file with the first binary release.

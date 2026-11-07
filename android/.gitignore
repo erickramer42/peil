@@ -1,0 +1,8 @@
+/.gradle/
+/build/
+/app/build/
+/.kotlin/
+# The SDK's location on this machine.
+/local.properties
+# The core, built by build-core.sh; never committed.
+/app/src/main/jniLibs/
