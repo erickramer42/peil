@@ -11,23 +11,53 @@ import org.junit.Test
 
 /** The phone's side of `sensio.link/1`, against what the core's `link.rs` sends. */
 class LinkProtocolTest {
-    private fun refusal(type: String? = "hello", schema: String? = "sensio.link/1", code: String? = "123456", receiver: String? = "laptop") =
-        LinkProtocol.refusal(type, schema, code, receiver, expected = "123456")
+    private fun refusal(type: String? = "hello", schema: String? = "sensio.link/1", receiver: String? = "laptop") =
+        LinkProtocol.refusal(type, schema, receiver)
+
+    /** The secret and nonce of the vector the core's link tests check too. */
+    private val secret = ByteArray(32) { it.toByte() }
+    private val nonce = "aa".repeat(16)
 
     @Test
-    fun aHelloWithTheCodeAndAValidReceiverIsWelcomed() {
+    fun aHelloWithTheSchemaAndAValidReceiverGoesOn() {
         assertNull(refusal())
     }
 
     @Test
-    fun aHelloIsRefusedForTheWrongCodeSchemaTypeOrReceiver() {
-        assertEquals(LinkProtocol.WRONG_CODE, refusal(code = "654321"))
-        assertEquals(LinkProtocol.WRONG_CODE, refusal(code = null))
+    fun aHelloIsRefusedForTheWrongSchemaTypeOrReceiver() {
         assertEquals("this app speaks sensio.link/1", refusal(schema = "sensio.link/2"))
         assertEquals("expected a hello", refusal(type = "line"))
         for (receiver in listOf(null, "", "Laptop", "a b", "phone", "x".repeat(33))) {
             assertTrue("receiver $receiver", refusal(receiver = receiver)!!.startsWith("receiver must be"))
         }
+    }
+
+    @Test
+    fun theProofIsTheOneTheCoreComputes() {
+        assertEquals(
+            "d2fba96fe4aa315748030adf529ace1cdc3ecec2f9cf6be2cc8f46fc700a1dae",
+            Feed.hex(LinkProtocol.proof(secret, "laptop", nonce)),
+        )
+    }
+
+    @Test
+    fun onlyTheRightProofForThisNonceAndReceiverIsAccepted() {
+        val right = "d2fba96fe4aa315748030adf529ace1cdc3ecec2f9cf6be2cc8f46fc700a1dae"
+        assertTrue(LinkProtocol.verify(secret, "laptop", nonce, right))
+        assertTrue(LinkProtocol.verify(secret, "laptop", nonce, right.uppercase()))
+        assertFalse(LinkProtocol.verify(secret, "laptop", "bb".repeat(16), right))
+        assertFalse(LinkProtocol.verify(secret, "thinkpad", nonce, right))
+        assertFalse(LinkProtocol.verify(ByteArray(32), "laptop", nonce, right))
+        for (bad in listOf(null, "", "zz", right.dropLast(1), right.dropLast(2))) {
+            assertFalse("$bad", LinkProtocol.verify(secret, "laptop", nonce, bad))
+        }
+    }
+
+    @Test
+    fun secretsAndNoncesAreFreshAndTheRightSize() {
+        assertEquals(32, LinkProtocol.newSecret().size)
+        assertTrue(LinkProtocol.newNonce().matches(Regex("[0-9a-f]{32}")))
+        assertFalse(LinkProtocol.newSecret().contentEquals(LinkProtocol.newSecret()))
     }
 
     @Test
@@ -61,6 +91,11 @@ class LinkProtocolTest {
     @Test
     fun thePhonesLinesAreTheOnesTheLaptopReads() {
         assertEquals("""{"type":"welcome"}""", LinkProtocol.welcome())
+        assertEquals(
+            """{"type":"welcome","secret":"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"}""",
+            LinkProtocol.welcome(secret),
+        )
+        assertEquals("""{"type":"challenge","nonce":"$nonce"}""", LinkProtocol.challenge(nonce))
         assertEquals("""{"type":"refused","reason":"wrong code"}""", LinkProtocol.refused(LinkProtocol.WRONG_CODE))
         assertEquals("""{"type":"ping","id":3}""", LinkProtocol.ping(3))
     }

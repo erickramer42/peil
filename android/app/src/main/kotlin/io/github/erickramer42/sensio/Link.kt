@@ -13,8 +13,11 @@ import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import org.json.JSONObject
 
 /**
@@ -26,6 +29,7 @@ object LinkProtocol {
     const val SCHEMA = "sensio.link/1"
     const val PORT = 8765
     const val WRONG_CODE = "wrong code"
+    const val NOT_PAIRED = "not paired"
 
     /** The longest line either way, as the feed's (ADR-0005). */
     const val MAX_LINE_BYTES = 1 shl 20
@@ -40,14 +44,42 @@ object LinkProtocol {
     fun isLabel(s: String): Boolean =
         s.length in 1..32 && s.all { it in 'a'..'z' || it in '0'..'9' || it in "-_." }
 
-    /** Why a hello is refused, or null to welcome it. */
-    fun refusal(type: String?, schema: String?, code: String?, receiver: String?, expected: String): String? = when {
+    /** Why a hello is refused whatever it carries, or null to go on. */
+    fun refusal(type: String?, schema: String?, receiver: String?): String? = when {
         type != "hello" -> "expected a hello"
         schema != SCHEMA -> "this app speaks $SCHEMA"
-        code != expected -> WRONG_CODE
         receiver == null || !isLabel(receiver) || receiver == Feed.RECEIVER ->
             "receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.', and not ${Feed.RECEIVER}"
         else -> null
+    }
+
+    /** A new pairing's shared secret: 32 random bytes. */
+    fun newSecret(random: SecureRandom = SecureRandom()): ByteArray = ByteArray(32).also { random.nextBytes(it) }
+
+    /** A challenge's nonce: 16 random bytes, in hex. */
+    fun newNonce(random: SecureRandom = SecureRandom()): String = Feed.hex(ByteArray(16).also { random.nextBytes(it) })
+
+    /**
+     * The proof a paired laptop must send for [nonce]: HMAC-SHA256 under the
+     * secret of `sensio.link/1|<receiver>|<nonce>`, as the core's `link.rs`
+     * computes it.
+     */
+    fun proof(secret: ByteArray, receiver: String, nonce: String): ByteArray =
+        Mac.getInstance("HmacSHA256").run {
+            init(SecretKeySpec(secret, "HmacSHA256"))
+            doFinal("$SCHEMA|$receiver|$nonce".toByteArray(Charsets.UTF_8))
+        }
+
+    /** Whether [macHex] is the right proof, compared in constant time. */
+    fun verify(secret: ByteArray, receiver: String, nonce: String, macHex: String?): Boolean {
+        val mac = macHex?.let(::unhex) ?: return false
+        return MessageDigest.isEqual(proof(secret, receiver, nonce), mac)
+    }
+
+    /** The bytes of lowercase or uppercase hex, or null. */
+    fun unhex(text: String): ByteArray? {
+        if (text.length % 2 != 0) return null
+        return runCatching { ByteArray(text.length / 2) { text.substring(it * 2, it * 2 + 2).toInt(16).toByte() } }.getOrNull()
     }
 
     /**
@@ -76,7 +108,10 @@ object LinkProtocol {
         }
     }
 
-    fun welcome() = """{"type":"welcome"}"""
+    fun welcome(secret: ByteArray? = null) =
+        if (secret == null) """{"type":"welcome"}""" else """{"type":"welcome","secret":"${Feed.hex(secret)}"}"""
+
+    fun challenge(nonce: String) = """{"type":"challenge","nonce":${Feed.quote(nonce)}}"""
 
     fun refused(reason: String) = """{"type":"refused","reason":${Feed.quote(reason)}}"""
 
@@ -86,10 +121,12 @@ object LinkProtocol {
 /**
  * The phone's side of the laptop link while a session runs and the user has
  * turned it on: a listener on the USB tether's address only, one laptop at a
- * time, with a pairing code the screen shows, new each time the link is
- * turned on. After three wrong codes it stops listening until it's turned
- * off and on again. The laptop's lines go to [line],
- * its measured clock offsets to [offset].
+ * time. A laptop pairs once with the code the screen shows (new each time
+ * the link is turned on) and gets a shared secret; later it proves the
+ * secret instead, so the link comes up with no one at the screen. After
+ * three wrong codes, codes are refused until the link is turned off and on;
+ * the paired laptop still gets in. The laptop's lines go to [line], its
+ * measured clock offsets to [offset].
  */
 class Link(
     private val context: Context,
@@ -124,7 +161,7 @@ class Link(
                 wrong = 0
             }
             on = enabled
-            val address = if (enabled && wrong < MAX_WRONG) tetherAddress() else null
+            val address = if (enabled) tetherAddress() else null
             if (address != bound) {
                 runCatching { server?.close() }
                 server = null
@@ -132,7 +169,6 @@ class Link(
             }
             when {
                 !enabled -> Live.link(null)
-                wrong >= MAX_WRONG -> Live.link("Laptop: stopped listening after $MAX_WRONG wrong codes; turn it off and on")
                 address == null -> Live.link("Laptop: turn on USB tethering")
             }
             if (address == null) {
@@ -147,7 +183,7 @@ class Link(
             }.getOrNull() ?: continue
             server = listening
             bound = address
-            Live.link("Laptop: waiting on ${address.hostAddress}:${LinkProtocol.PORT}, code $code")
+            Live.link(waiting(address))
             val socket = try {
                 listening.accept()
             } catch (_: SocketTimeoutException) {
@@ -173,14 +209,45 @@ class Link(
         val output = socket.getOutputStream()
         val hello = LinkProtocol.readLine(input)?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
         val receiver = hello.text("receiver")
-        val reason = LinkProtocol.refusal(hello.text("type"), hello.text("schema"), hello.text("code"), receiver, code)
+        val reason = LinkProtocol.refusal(hello.text("type"), hello.text("schema"), receiver)
         if (reason != null) {
-            if (reason == LinkProtocol.WRONG_CODE) wrong += 1
             send(output, LinkProtocol.refused(reason))
             return
         }
         receiver!!
-        send(output, LinkProtocol.welcome())
+        val given = hello.text("code")
+        if (given != null) {
+            // Pairing: a right code gets a new secret, replacing any pairing before.
+            val refusedCode = when {
+                wrong >= MAX_WRONG -> "pairing is closed after $MAX_WRONG wrong codes; turn the link off and on"
+                given != code -> LinkProtocol.WRONG_CODE
+                else -> null
+            }
+            if (refusedCode != null) {
+                if (refusedCode == LinkProtocol.WRONG_CODE) wrong += 1
+                send(output, LinkProtocol.refused(refusedCode))
+                return
+            }
+            val secret = LinkProtocol.newSecret()
+            Pairing.save(context, receiver, secret)
+            send(output, LinkProtocol.welcome(secret))
+        } else {
+            // A paired laptop proves the secret for a fresh nonce.
+            val pairing = Pairing.get(context)
+            if (pairing == null || pairing.first != receiver) {
+                send(output, LinkProtocol.refused(LinkProtocol.NOT_PAIRED))
+                return
+            }
+            val nonce = LinkProtocol.newNonce()
+            send(output, LinkProtocol.challenge(nonce))
+            val answer = LinkProtocol.readLine(input)?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val mac = answer?.takeIf { it.text("type") == "proof" }?.text("mac")
+            if (!LinkProtocol.verify(pairing.second, receiver, nonce, mac)) {
+                send(output, LinkProtocol.refused(LinkProtocol.NOT_PAIRED))
+                return
+            }
+            send(output, LinkProtocol.welcome())
+        }
         Live.link("Laptop: linked ($receiver)")
         socket.soTimeout = SILENT_MS
 
@@ -203,7 +270,7 @@ class Link(
             start()
         }
         try {
-            while (running) {
+            while (running && Options.link(context)) {
                 val text = LinkProtocol.readLine(input) ?: return
                 val o = runCatching { JSONObject(text) }.getOrNull() ?: continue
                 when (o.text("type")) {
@@ -227,6 +294,16 @@ class Link(
         } finally {
             runCatching { socket.close() }
             pinger.interrupt()
+        }
+    }
+
+    private fun waiting(address: InetAddress): String = buildString {
+        append("Laptop: waiting on ${address.hostAddress}:${LinkProtocol.PORT}")
+        Pairing.get(context)?.let { append(" for ${it.first}") }
+        if (wrong >= MAX_WRONG) {
+            append("; pairing closed after $MAX_WRONG wrong codes (turn off and on)")
+        } else {
+            append("; code $code pairs a laptop")
         }
     }
 

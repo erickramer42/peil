@@ -1,0 +1,23 @@
+# Peil's link to the phone, as a systemd user service: sends Kismet's devices
+# to the app whenever the phone is on the USB tether, and waits when it isn't.
+#
+# Pair once by hand (peil link --code <code from the app>), then:
+#   cp contrib/systemd/peil-link.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now peil-link
+#   loginctl enable-linger "$USER"    # to start at boot, before logging in
+#
+# Kismet's API key is read from ~/.config/peil/kismet-api-key.
+
+[Unit]
+Description=Peil's link to the phone over the USB tether (sensio.link/1)
+
+[Service]
+ExecStart=%h/.cargo/bin/peil link
+# A refusal (the phone forgot the pairing) or a failure to start exits; try
+# again later rather than giving up.
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

@@ -68,6 +68,27 @@ object Options {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(LINK, on).apply()
 }
 
+/**
+ * The paired laptop (ADR-0004 section 6): its receiver name and the shared
+ * secret, in the app's private storage, which backups leave out.
+ */
+object Pairing {
+    private const val PREFS = "link_pairing"
+
+    fun get(context: Context): Pair<String, ByteArray>? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val receiver = prefs.getString("receiver", null) ?: return null
+        val secret = prefs.getString("secret", null)?.let(LinkProtocol::unhex) ?: return null
+        return Pair(receiver, secret)
+    }
+
+    fun save(context: Context, receiver: String, secret: ByteArray) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("receiver", receiver).putString("secret", Feed.hex(secret)).commit()
+
+    fun forget(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().commit()
+}
+
 object BuildInfo {
     fun version(context: Context): String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "unknown"

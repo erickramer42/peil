@@ -9,7 +9,7 @@ use std::thread;
 use std::time::Duration;
 
 use sensio_sources::kismet_poll::{PollError, Poller};
-use sensio_sources::link::{self, Config, LinkError, LinkLine};
+use sensio_sources::link::{self, Auth, Config, LinkError, LinkLine, Pairing};
 use serde_json::{Value, json};
 
 const NOW_NS: i64 = 1_800_000_000_000_000_000;
@@ -119,10 +119,13 @@ fn the_poller_says_why_kismet_gave_nothing() {
     assert!(matches!(poller.poll(), Err(PollError::Unreachable(_))));
 }
 
-fn config(phone: SocketAddr, code: &str) -> Config {
+/// A pairing's secret, as the app would hand it over.
+const SECRET: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+fn config(phone: SocketAddr, auth: Auth) -> Config {
     Config {
         phone,
-        code: code.to_owned(),
+        auth,
         receiver: "thinkpad".to_owned(),
         app: "peil-test".to_owned(),
         poll_every: Duration::from_millis(50),
@@ -152,7 +155,12 @@ fn a_session_says_hello_answers_pings_and_sends_kismets_records() {
         let (mut stream, _) = phone.accept().expect("accept");
         let mut reader = BufReader::new(stream.try_clone().expect("clone"));
         let hello = receive(&mut reader);
-        send(&mut stream, &LinkLine::Welcome);
+        send(
+            &mut stream,
+            &LinkLine::Welcome {
+                secret: Some(SECRET.to_owned()),
+            },
+        );
         send(&mut stream, &LinkLine::Ping { id: 7 });
         let mut got = vec![hello];
         while !(got.iter().any(|l| matches!(l, LinkLine::Pong { .. }))
@@ -166,21 +174,31 @@ fn a_session_says_hello_answers_pings_and_sends_kismets_records() {
     let mut poller = Poller::new(&base, None, 10);
     let stop = AtomicBool::new(false);
     let mut log = Vec::new();
+    let mut pairings = Vec::new();
     let ended = link::run_session(
-        &config(address, "123456"),
+        &config(address, Auth::Code("123456".to_owned())),
         &mut poller,
         clock,
         &stop,
         &mut |text| log.push(text.to_owned()),
+        &mut |pairing| pairings.push(pairing),
     );
     let got = phone.join().expect("the phone");
+    assert_eq!(
+        pairings,
+        [Pairing {
+            receiver: "thinkpad".to_owned(),
+            secret: SECRET.to_owned()
+        }],
+        "the code's welcome is a pairing to keep"
+    );
 
     assert!(matches!(ended, Err(LinkError::Closed(_))), "{ended:?}");
     assert_eq!(
         got[0],
         LinkLine::Hello {
             schema: link::SCHEMA.to_owned(),
-            code: "123456".to_owned(),
+            code: Some("123456".to_owned()),
             receiver: "thinkpad".to_owned(),
             app: "peil-test".to_owned(),
         }
@@ -228,11 +246,12 @@ fn a_refused_hello_ends_the_session_with_the_reason() {
     });
     let mut poller = Poller::new("http://127.0.0.1:9", None, 10);
     let ended = link::run_session(
-        &config(address, "000000"),
+        &config(address, Auth::Code("000000".to_owned())),
         &mut poller,
         clock,
         &AtomicBool::new(false),
         &mut |_| {},
+        &mut |_| panic!("a refusal pairs nothing"),
     );
     phone.join().expect("the phone");
     match ended {
@@ -258,7 +277,22 @@ fn the_phone_is_the_gateway_of_the_usb_tethers_default_route() {
 fn the_lines_the_app_writes_are_the_ones_the_laptop_reads() {
     // As the app's LinkProtocol writes them.
     let read = |text: &str| serde_json::from_str::<LinkLine>(text).expect(text);
-    assert_eq!(read(r#"{"type":"welcome"}"#), LinkLine::Welcome);
+    assert_eq!(
+        read(r#"{"type":"welcome"}"#),
+        LinkLine::Welcome { secret: None }
+    );
+    assert_eq!(
+        read(r#"{"type":"welcome","secret":"0a0b"}"#),
+        LinkLine::Welcome {
+            secret: Some("0a0b".to_owned())
+        }
+    );
+    assert_eq!(
+        read(r#"{"type":"challenge","nonce":"aa"}"#),
+        LinkLine::Challenge {
+            nonce: "aa".to_owned()
+        }
+    );
     assert_eq!(
         read(r#"{"type":"refused","reason":"wrong code"}"#),
         LinkLine::Refused {
@@ -266,4 +300,100 @@ fn the_lines_the_app_writes_are_the_ones_the_laptop_reads() {
         }
     );
     assert_eq!(read(r#"{"type":"ping","id":3}"#), LinkLine::Ping { id: 3 });
+}
+
+#[test]
+fn hmac_sha256_matches_rfc_4231() {
+    let hex = |bytes: [u8; 32]| {
+        bytes.iter().fold(String::new(), |mut out, b| {
+            let _ = std::fmt::Write::write_fmt(&mut out, format_args!("{b:02x}"));
+            out
+        })
+    };
+    // Test case 1, and test case 6 (a key longer than the block).
+    assert_eq!(
+        hex(link::hmac_sha256(&[0x0b; 20], b"Hi There")),
+        "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7"
+    );
+    assert_eq!(
+        hex(link::hmac_sha256(
+            &[0xaa; 131],
+            b"Test Using Larger Than Block-Size Key - Hash Key First"
+        )),
+        "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54"
+    );
+}
+
+#[test]
+fn the_proof_is_the_one_the_app_checks() {
+    // The same vector is in the app's LinkProtocolTest.
+    let pairing = Pairing {
+        receiver: "laptop".to_owned(),
+        secret: SECRET.to_owned(),
+    };
+    assert_eq!(
+        link::proof(&pairing, &"aa".repeat(16)).as_deref(),
+        Some("d2fba96fe4aa315748030adf529ace1cdc3ecec2f9cf6be2cc8f46fc700a1dae")
+    );
+    let short = Pairing {
+        secret: "0a0b".to_owned(),
+        ..pairing
+    };
+    assert_eq!(link::proof(&short, "aa"), None, "a secret too short to use");
+}
+
+#[test]
+fn a_paired_laptop_answers_the_challenge_and_sends_no_code() {
+    let phone = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let address = phone.local_addr().expect("address");
+    let phone = thread::spawn(move || {
+        let (mut stream, _) = phone.accept().expect("accept");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+        let hello = receive(&mut reader);
+        send(
+            &mut stream,
+            &LinkLine::Challenge {
+                nonce: "aa".repeat(16),
+            },
+        );
+        let proof = receive(&mut reader);
+        send(&mut stream, &LinkLine::Welcome { secret: None });
+        (hello, proof)
+    });
+    let pairing = Pairing {
+        receiver: "laptop".to_owned(),
+        secret: SECRET.to_owned(),
+    };
+    let mut poller = Poller::new("http://127.0.0.1:9", None, 10);
+    let mut log = Vec::new();
+    let ended = link::run_session(
+        &config(address, Auth::Paired(pairing)),
+        &mut poller,
+        clock,
+        &AtomicBool::new(false),
+        &mut |text| log.push(text.to_owned()),
+        &mut |_| panic!("proving a pairing makes no new one"),
+    );
+    let (hello, proof) = phone.join().expect("the phone");
+    assert!(matches!(ended, Err(LinkError::Closed(_))), "{ended:?}");
+    assert_eq!(
+        hello,
+        LinkLine::Hello {
+            schema: link::SCHEMA.to_owned(),
+            code: None,
+            receiver: "laptop".to_owned(),
+            app: "peil-test".to_owned(),
+        },
+        "the pairing's receiver name, and no code"
+    );
+    assert_eq!(
+        proof,
+        LinkLine::Proof {
+            mac: "d2fba96fe4aa315748030adf529ace1cdc3ecec2f9cf6be2cc8f46fc700a1dae".to_owned()
+        }
+    );
+    assert!(
+        log.iter().any(|l| l.starts_with("linked to the phone")),
+        "{log:?}"
+    );
 }

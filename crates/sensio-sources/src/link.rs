@@ -2,9 +2,14 @@
 //! 2026-11-07): one TCP connection over the USB tether carrying JSON lines,
 //! `sensio.link/1`, each with its `type`.
 //!
-//! - The laptop opens with `hello`: the schema, the pairing code the app
-//!   shows, the receiver's name (`thinkpad`) and its version.
-//! - The phone answers `welcome`, or `refused` with a reason and closes.
+//! - The laptop opens with `hello`: the schema, the receiver's name
+//!   (`thinkpad`), its version, and, to pair, the code the app shows.
+//! - To a code, the phone answers `welcome` with a new shared secret, which
+//!   the laptop keeps ([`Pairing`]). Without a code, the phone sends a
+//!   `challenge` with a fresh nonce and the laptop answers with a `proof`,
+//!   the nonce's HMAC-SHA256 under the secret ([`proof`]), so the secret
+//!   never crosses the link again; then `welcome`.
+//! - Either way, a refusal is `refused` with a reason, and the phone closes.
 //! - The phone sends `ping`s; the laptop answers each at once with a `pong`
 //!   carrying its own clock, and the phone takes the clock offset from the
 //!   round trip.
@@ -23,6 +28,7 @@ use std::time::{Duration, Instant};
 
 use sensio_core::feed::{BoundedLine, MAX_LINE_BYTES, read_bounded_line};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::kismet_poll::Poller;
 
@@ -40,15 +46,31 @@ pub enum LinkLine {
     Hello {
         /// [`SCHEMA`].
         schema: String,
-        /// The pairing code the app shows.
-        code: String,
+        /// The pairing code the app shows, to pair; absent for a laptop
+        /// already paired.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
         /// The receiver's name, as the event schema writes it.
         receiver: String,
         /// The laptop program and its version.
         app: String,
     },
-    /// The phone took the hello.
-    Welcome,
+    /// The phone asks a paired laptop to prove it holds the secret.
+    Challenge {
+        /// A fresh nonce, in hex.
+        nonce: String,
+    },
+    /// The laptop's answer to a challenge: [`proof`], in hex.
+    Proof {
+        /// The HMAC-SHA256, in hex.
+        mac: String,
+    },
+    /// The phone took the hello; to a code, with the new pairing's secret.
+    Welcome {
+        /// The shared secret, in hex, when the hello paired.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        secret: Option<String>,
+    },
     /// The phone refused the hello, and closes.
     Refused {
         /// Why.
@@ -85,7 +107,7 @@ pub enum LinkLine {
 /// Why a link session ended.
 #[derive(Debug, thiserror::Error)]
 pub enum LinkError {
-    /// The phone refused the hello: a wrong code, or the link isn't on.
+    /// The phone refused the hello: a wrong code, or not paired.
     #[error("the phone refused the link: {0}")]
     Refused(String),
     /// The connection failed or closed.
@@ -93,12 +115,85 @@ pub enum LinkError {
     Closed(String),
 }
 
+/// A pairing with the phone: this laptop's receiver name and the secret the
+/// phone gave it, kept between runs so later links need no code.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pairing {
+    /// The receiver name the pairing was made under.
+    pub receiver: String,
+    /// The shared secret, in hex.
+    pub secret: String,
+}
+
+/// How the laptop shows the phone it's allowed in.
+#[derive(Debug, Clone)]
+pub enum Auth {
+    /// The code the app shows: pairs anew.
+    Code(String),
+    /// A pairing made before.
+    Paired(Pairing),
+}
+
+/// The bytes the secret's hex text stands for, if it's 16 to 64 bytes of hex.
+fn secret_bytes(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 || !(32..=128).contains(&hex.len()) {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
+fn to_hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+}
+
+/// HMAC-SHA256 (RFC 2104), written out over `sha2`: the `hmac` crate's
+/// constant-time comparison helper is BSD-licensed, and this side only
+/// computes MACs, never compares them.
+#[must_use]
+pub fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+    const BLOCK: usize = 64;
+    let mut block = [0u8; BLOCK];
+    if key.len() > BLOCK {
+        block[..32].copy_from_slice(&Sha256::digest(key));
+    } else {
+        block[..key.len()].copy_from_slice(key);
+    }
+    let inner = Sha256::new()
+        .chain_update(block.map(|b| b ^ 0x36))
+        .chain_update(message)
+        .finalize();
+    Sha256::new()
+        .chain_update(block.map(|b| b ^ 0x5c))
+        .chain_update(inner)
+        .finalize()
+        .into()
+}
+
+/// The answer to a challenge, in hex: the HMAC-SHA256 under the pairing's
+/// secret of `sensio.link/1|<receiver>|<nonce>`, binding the answer to this
+/// schema and receiver. `None` if the secret isn't hex of a usable length.
+#[must_use]
+pub fn proof(pairing: &Pairing, nonce: &str) -> Option<String> {
+    let secret = secret_bytes(&pairing.secret)?;
+    let message = format!("{SCHEMA}|{}|{nonce}", pairing.receiver);
+    Some(to_hex(&hmac_sha256(&secret, message.as_bytes())))
+}
+
 /// What a link session needs.
 pub struct Config {
     /// The phone's address on the tether.
     pub phone: SocketAddr,
-    /// The pairing code the app shows.
-    pub code: String,
+    /// A code to pair with, or a pairing made before.
+    pub auth: Auth,
     /// This laptop's receiver name.
     pub receiver: String,
     /// This program and its version.
@@ -155,21 +250,77 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<LinkLine, LinkError> {
     }
 }
 
-/// One link session: connects, says hello, then answers pings and passes on
-/// each poll's Kismet records until the connection ends or `stop` is set.
-/// `clock` is the laptop's clock in nanoseconds; `log` gets a line for each
-/// change worth telling the user.
+/// The hello and its answer: a code pairs, a pairing proves itself.
+fn hello(
+    config: &Config,
+    reader: &mut BufReader<TcpStream>,
+    writer: &Mutex<BufWriter<TcpStream>>,
+    log: &mut dyn FnMut(&str),
+    paired: &mut dyn FnMut(Pairing),
+) -> Result<(), LinkError> {
+    let receiver = match &config.auth {
+        Auth::Code(_) => config.receiver.clone(),
+        Auth::Paired(pairing) => pairing.receiver.clone(),
+    };
+    send(
+        writer,
+        &LinkLine::Hello {
+            schema: SCHEMA.to_owned(),
+            code: match &config.auth {
+                Auth::Code(code) => Some(code.clone()),
+                Auth::Paired(_) => None,
+            },
+            receiver: receiver.clone(),
+            app: config.app.clone(),
+        },
+    )?;
+    let unexpected = || LinkError::Closed("the phone didn't answer the hello".to_owned());
+    let mut answer = read_line(reader)?;
+    if let (Auth::Paired(pairing), LinkLine::Challenge { nonce }) = (&config.auth, &answer) {
+        let mac = proof(pairing, nonce).ok_or_else(|| {
+            LinkError::Refused("the saved pairing's secret isn't usable".to_owned())
+        })?;
+        send(writer, &LinkLine::Proof { mac })?;
+        answer = read_line(reader)?;
+    }
+    match (answer, &config.auth) {
+        (
+            LinkLine::Welcome {
+                secret: Some(secret),
+            },
+            Auth::Code(_),
+        ) => {
+            if secret_bytes(&secret).is_none() {
+                return Err(unexpected());
+            }
+            log("paired with the phone; later links need no code");
+            paired(Pairing { receiver, secret });
+        }
+        (LinkLine::Welcome { secret: None }, Auth::Paired(_)) => {}
+        (LinkLine::Refused { reason }, _) => return Err(LinkError::Refused(reason)),
+        _ => return Err(unexpected()),
+    }
+    Ok(())
+}
+
+/// One link session: connects, says hello (pairing, or proving a pairing),
+/// then answers pings and passes on each poll's Kismet records until the
+/// connection ends or `stop` is set. `clock` is the laptop's clock in
+/// nanoseconds; `log` gets a line for each change worth telling the user;
+/// `paired` gets a new pairing to keep.
 ///
 /// # Errors
 ///
-/// [`LinkError::Refused`] if the phone refused the hello (try another code),
-/// [`LinkError::Closed`] if the connection failed or closed (try again).
+/// [`LinkError::Refused`] if the phone refused the hello (a wrong code, or
+/// not paired), [`LinkError::Closed`] if the connection failed or closed
+/// (try again).
 pub fn run_session(
     config: &Config,
     poller: &mut Poller,
     clock: fn() -> i64,
     stop: &AtomicBool,
     log: &mut dyn FnMut(&str),
+    paired: &mut dyn FnMut(Pairing),
 ) -> Result<(), LinkError> {
     let closed = |err: std::io::Error| LinkError::Closed(err.to_string());
     let stream =
@@ -179,27 +330,10 @@ pub fn run_session(
     let writer = Arc::new(Mutex::new(BufWriter::new(
         stream.try_clone().map_err(closed)?,
     )));
-    send(
-        &writer,
-        &LinkLine::Hello {
-            schema: SCHEMA.to_owned(),
-            code: config.code.clone(),
-            receiver: config.receiver.clone(),
-            app: config.app.clone(),
-        },
-    )?;
     stream
         .set_read_timeout(Some(Duration::from_secs(10)))
         .map_err(closed)?;
-    match read_line(&mut reader)? {
-        LinkLine::Welcome => {}
-        LinkLine::Refused { reason } => return Err(LinkError::Refused(reason)),
-        _ => {
-            return Err(LinkError::Closed(
-                "the phone didn't answer the hello".to_owned(),
-            ));
-        }
-    }
+    hello(config, &mut reader, &writer, log, paired)?;
     stream.set_read_timeout(None).map_err(closed)?;
     log(&format!("linked to the phone at {}", config.phone));
 

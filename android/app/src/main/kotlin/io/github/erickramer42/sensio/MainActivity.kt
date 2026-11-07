@@ -196,10 +196,27 @@ class MainActivity : Activity() {
         show()
     }
 
-    /** The laptop link, off by default; a running session picks the change up within seconds. */
+    /**
+     * The laptop link, off by default; a running session picks the change up
+     * within seconds. Turning it off can also forget the paired laptop.
+     */
     private fun toggleLaptop() {
-        Options.setLink(this, !Options.link(this))
-        show()
+        if (!Options.link(this)) {
+            Options.setLink(this, true)
+            show()
+            return
+        }
+        val paired = Pairing.get(this)?.first
+        val choices = listOfNotNull("Turn off", paired?.let { "Turn off and forget $it" })
+        AlertDialog.Builder(this)
+            .setTitle("Laptop link")
+            .setItems(choices.toTypedArray()) { _, which ->
+                Options.setLink(this, false)
+                if (which == 1) Pairing.forget(this)
+                show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

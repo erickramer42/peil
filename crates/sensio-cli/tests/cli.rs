@@ -274,6 +274,8 @@ fn live_reports_a_bad_vendor_registry_with_its_line() {
 #[test]
 fn link_stops_when_the_phone_refuses_the_code() {
     use std::io::{BufRead, Write};
+    let pairing = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("refused-pairing.json");
+    let _ = std::fs::remove_file(&pairing);
     let phone = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
     let address = phone.local_addr().expect("address").to_string();
     let phone = std::thread::spawn(move || {
@@ -294,9 +296,12 @@ fn link_stops_when_the_phone_refuses_the_code() {
             "000000".as_ref(),
             "--phone".as_ref(),
             address.as_ref(),
+            "--pairing".as_ref(),
+            pairing.as_ref(),
         ],
         None,
     );
+    assert!(!pairing.exists(), "a refusal keeps no pairing");
     let hello: serde_json::Value =
         serde_json::from_str(&phone.join().expect("the phone")).expect("JSON");
     assert_eq!(hello["type"], "hello");
@@ -322,4 +327,91 @@ fn link_rejects_a_receiver_name_the_events_cant_carry() {
     );
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("--receiver must be"));
+}
+
+#[test]
+fn link_pairs_with_the_code_once_then_proves_the_pairing() {
+    use std::io::{BufRead, Write};
+    let pairing = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("link-pairing.json");
+    let _ = std::fs::remove_file(&pairing);
+    let secret = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+    let phone = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let address = phone.local_addr().expect("address").to_string();
+    let hello = |stream: &std::net::TcpStream| {
+        let mut line = String::new();
+        std::io::BufReader::new(stream)
+            .read_line(&mut line)
+            .expect("a line");
+        serde_json::from_str::<serde_json::Value>(&line).expect("JSON")
+    };
+    let phone = std::thread::spawn(move || {
+        // The code pairs; the phone hands over the secret, then hangs up.
+        let (first, _) = phone.accept().expect("accept");
+        let pairing_hello = hello(&first);
+        (&first)
+            .write_all(format!("{{\"type\":\"welcome\",\"secret\":\"{secret}\"}}\n").as_bytes())
+            .expect("write");
+        drop(first);
+        // The reconnect proves the pairing instead; this phone has forgotten it.
+        let (second, _) = phone.accept().expect("accept");
+        let proving_hello = hello(&second);
+        (&second)
+            .write_all(b"{\"type\":\"refused\",\"reason\":\"not paired\"}\n")
+            .expect("write");
+        (pairing_hello, proving_hello)
+    });
+    let run = |args: &[&str]| {
+        let mut all: Vec<&std::ffi::OsStr> =
+            vec!["link".as_ref(), "--phone".as_ref(), address.as_ref()];
+        all.extend(["--pairing".as_ref(), pairing.as_os_str()]);
+        all.extend(args.iter().map(std::ffi::OsStr::new));
+        peil(&all, None)
+    };
+    let output = run(&[
+        "--code",
+        "123456",
+        "--receiver",
+        "thinkpad",
+        "--kismet",
+        "http://127.0.0.1:9",
+    ]);
+    let (pairing_hello, proving_hello) = phone.join().expect("the phone");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert_eq!(pairing_hello["code"], "123456");
+    assert!(proving_hello.get("code").is_none(), "{proving_hello}");
+    assert_eq!(proving_hello["receiver"], "thinkpad");
+    let kept: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&pairing).expect("the pairing is kept"))
+            .expect("JSON");
+    assert_eq!(
+        kept,
+        serde_json::json!({"receiver": "thinkpad", "secret": secret})
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(stderr.contains("paired with the phone"), "{stderr}");
+    assert!(stderr.contains("pair again with --code"), "{stderr}");
+
+    // With the pairing kept, a different name is refused before connecting.
+    let output = run(&["--receiver", "other"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("paired as thinkpad"));
+}
+
+#[test]
+fn link_without_a_code_or_a_pairing_says_how_to_pair() {
+    let pairing = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("no-pairing.json");
+    let _ = std::fs::remove_file(&pairing);
+    let output = peil(
+        &[
+            "link".as_ref(),
+            "--phone".as_ref(),
+            "127.0.0.1".as_ref(),
+            "--pairing".as_ref(),
+            pairing.as_os_str(),
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("not paired with the phone yet"));
 }
