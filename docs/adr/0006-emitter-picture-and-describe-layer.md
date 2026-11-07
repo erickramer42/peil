@@ -1,0 +1,49 @@
+# ADR-0006: The emitter picture and the describe layer
+
+Status: Proposed.
+
+## Context
+
+ADR-0001 states Peil's question as an anomaly question: what is unusual in this place, or traveling with this vehicle, right now, and should you care? Its answer is the judge's verdicts. Using it on the road raises an earlier question that the verdicts don't answer: what is transmitting near me right now, and which of it is loud? Someone watching the space around a vehicle first wants the picture (every emitter around them, the strong ones first, each named as far as a lookup can name it), and then the judgment over it.
+
+Much of that picture needs no judgment. An address's vendor block comes from the IEEE registry; an advert's format names the tracker network it belongs to (Apple Find My, Google's Find My Device network, Samsung SmartThings Find, Tile); an access point announces its security; signal strength is measured. These are lookups and measurements, not rules about behavior, and they shouldn't wait for one.
+
+They still have to meet the judge's standards. ADR-0005 makes a replay of a saved feed give, byte for byte, what was shown live; a picture computed some other way (in the app's Kotlin, say) would break that. And the lookup tables change over time (the registry grows, new advert formats appear), so the picture can only be reproduced if it says which tables made it.
+
+The event schema can't carry the picture yet. A BLE advert keeps only its address and signal strength, but an Apple Find My tag and an iPhone share Apple's company ID, and only the advert's payload tells them apart; an access point's security isn't kept at all.
+
+## Decision
+
+1. **Two outputs from one pipeline.** The core turns the events so far into two things: descriptions (this ADR) and verdicts (ADR-0001 section 4). A description says what an emitter is, as far as lookup and measurement can say; a verdict says whether it is unusual or staying with you. Descriptions are evidence, never verdicts: none says "watching you", "following" or "threat", and only the judge says "staying with you". Both come from the same feed, in the same process, on every answer.
+
+2. **One description per emitter.** An emitter is a device as the event schema names it (`ble:`, `wifi:`, `tpms:` IDs): one per address, across sources and receivers. Its description holds:
+   - its kind (access point, Wi-Fi station, BLE device, TPMS sensor);
+   - the receivers that saw it, its first and last sighting, and its sightings;
+   - its signal: the latest and the strongest reported strength within the recent window, and a band (strong, medium, weak) from fixed thresholds per kind, since sources report strength on different scales (rtl_433's TPMS strength is relative, not dBm). A band is never a distance;
+   - its activity: sightings a minute within the recent window, per receiver, since a scan's rate shapes it as much as the emitter does;
+   - its vendor: the registry's organization for a globally administered address; "randomized" for a locally administered one; nothing for an ID that isn't an address;
+   - its tracker network, where its advert's format names one;
+   - an access point's security (open, OWE, WEP, WPA, WPA2, WPA3, and whether it's enterprise);
+   - its hardware category (section 4).
+
+3. **Deterministic and versioned like the judge.** The describe step is a pure function of the events, its parameters and its tables: no clock reads, randomness, hash-map iteration order or I/O. Its parameters (the strength bands, the recent window, the movement thresholds) come in as a struct with checked defaults, like `PersistenceRule`. Its tables in code (advert formats, hardware categories) carry `DESCRIBE_VERSION`, which follows `RULE_SET_VERSION`'s rules (it stays 1 until the first release, then bumps with any change to a table or a default). The vendor registry is data, not code (section 5), named by a hash of its contents. Every description set names both, so a replay with the same versions describes the same way, and a replay with newer tables shows its differences as differences.
+
+4. **Hardware, never operator.** A hardware category names a class of equipment: cellular or fleet router, camera-class device, body-camera-class device, tracker, infrastructure, consumer, unknown. It never names who operates it, whom it belongs to, or what it's for. A cellular router's vendor block rides in buses, ambulances, utility trucks and retail vans as well as patrol cars; the evidence names the router, and that's all it can carry. Each table entry cites its public source (a vendor's documentation, the Bluetooth SIG's assigned numbers) with the date it was read. Whether a category may raise an alert is the judge's business (severity, a later ADR), not the describe layer's.
+
+5. **The vendor registry is supplied, not bundled.** The core reads no registry of its own: `peil live --vendors <file>` and the app's settings import the IEEE's published MA-L, MA-M and MA-S lists, and the front end parses them (bounded, hostile-input rules, like any file) into a table it passes to the core. Without one, every vendor reads "no registry" and coverage says so. Bundling the registry waits until the IEEE's terms for redistributing it are checked. The app fetches nothing: the user downloads the lists and imports them (ADR-0004 section 8: no network libraries).
+
+6. **The event schema grows, additively.** A `ble_advert` gains the advert's manufacturer-specific data (each company ID with its payload, as hex) and its service data and service UUID list, each bounded (at most 255 bytes of payload per entry, as an extended advert allows). A `wifi_ap` gains its security. All are optional, so existing files stay valid, and each new field's bounds come with a rejection test. The advertised device name stays out of normalized events (it is often a person's name, "Kim's phone"); it stays only in the raw lines.
+
+7. **The verdict stream carries the picture.** Each answer to a `judge` line gains an `emitters` line before its `verdicts` line: the movement context at that moment (moving, stopped or parked, from the GNSS track against the parameters' thresholds), `DESCRIBE_VERSION`, the registry's hash, and the description of every emitter last seen within the recent window, ordered loud first (by band, then by the strongest recent strength, then by device ID, a total order), with counts of the emitters older than the window. "Recent" is measured back from the answer's own time, the `judge` line's arrival mapped to UTC, never from a clock. Like verdicts, the set is complete each time, not a difference. Readers of `sensio.verdicts/1` skip line types they don't know, so a new line type is an additive change; ADR-0005 is amended to say so when this ADR is accepted.
+
+8. **What Peil is.** The question becomes two, the first leading: what is transmitting near me right now, and is any of it unusual or staying with me, and should I care? On acceptance, ADR-0001's context gets a dated amendment pointing here, and the README's opening reads: "What's transmitting around a vehicle or a building, and is any of it unusual or staying with you? Peil describes every emitter nearby, the loud ones first, and judges them with versioned, deterministic rules."
+
+## Consequences
+
+- The ring in the app (ADR-0004) draws descriptions and verdicts from one stream, so what it shows is what a replay of the feed shows.
+- A property test holds that each answer's `emitters` line equals the describe step over the events before it, beside ADR-0005's test for verdicts; golden description sets join the golden verdicts; the fuzz targets cover the new fields and the registry parser.
+- The Android and Kismet normalizers keep manufacturer data, service data and security from their sources' output: Android's `ScanRecord` and `ScanResult.capabilities`, Kismet's device records.
+- The stream grows with every answer; the load budget (a stated events-a-second rate, measured on the phone) covers describing as well as judging, and the recent window bounds an answer's size.
+- Advert payloads are as personal as the addresses they come with (a tracker's payload can rotate with its key, but it identifies the tag for as long as the address does): they fall under ADR-0002 section 5 like everything else in a session.
+- Updating the registry changes vendor labels on replay without any code change; the hash on every description set makes that visible rather than silent.
+- Separated-from-owner state, which the tracker formats also carry, is a judge rule over these fields (per the DULT draft, Detecting Unwanted Location Trackers, at the IETF), not a description: it says something about the situation, not about the device.

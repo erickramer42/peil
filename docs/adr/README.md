@@ -9,3 +9,4 @@ Each record states a decision, why it was made, and what follows from it. Number
 | [0003](0003-product-and-internal-names.md) | The product name only where a user sees it; `sensio` inside | Accepted |
 | [0004](0004-android-app.md) | The Android app: Kotlin, the core as a process inside it, USB tethering to the laptop | Accepted; not yet built |
 | [0005](0005-live-feed-and-verdict-stream.md) | The live feed and the verdict stream: one format for the pipe and the saved lines, so replay equals live | Accepted; the formats and `peil live` are built |
+| [0006](0006-emitter-picture-and-describe-layer.md) | The emitter picture: one description per emitter by lookup and measurement, loud first, deterministic and versioned beside the judge | Proposed |
