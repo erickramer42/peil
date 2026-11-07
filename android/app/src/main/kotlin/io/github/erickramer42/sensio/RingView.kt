@@ -43,6 +43,11 @@ class RingView(context: Context) : View(context) {
         textSize = 12 * density
     }
 
+    private val bandLabel = Paint(label).apply {
+        color = Color.rgb(120, 126, 140)
+        textSize = 10 * density
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val h = MeasureSpec.getSize(heightMeasureSpec)
@@ -68,6 +73,13 @@ class RingView(context: Context) : View(context) {
             val tx = cx + 0.9f * r * cos(a).toFloat() - label.measureText(text) / 2
             val ty = cy + 0.9f * r * sin(a).toFloat()
             canvas.drawText(text, tx, ty, label)
+        }
+        // Each band's name at its ring's right edge, just above the horizon; the
+        // outermost one below it, where it has room.
+        for ((band, outer) in BANDS) {
+            val text = BAND_LABELS.getValue(band)
+            val y = if (band == "unknown") cy + bandLabel.textSize + 2 * density else cy - 4 * density
+            canvas.drawText(text, cx + outer * r - bandLabel.measureText(text) - 4 * density, y, bandLabel)
         }
         dot.color = Color.WHITE
         canvas.drawCircle(cx, cy, 5 * density, dot)
@@ -106,7 +118,9 @@ class RingView(context: Context) : View(context) {
             Sector("tpms", 150f, 30f),
         )
 
-        private val KIND_LABELS = mapOf("ble" to "BLE", "access_point" to "Wi-Fi AP", "station" to "Station", "tpms" to "TPMS")
+        private val BAND_LABELS = mapOf("strong" to ">= -60", "medium" to "-60..-80", "weak" to "< -80", "unknown" to "no dBm")
+
+        private val KIND_LABELS =mapOf("ble" to "BLE", "access_point" to "Wi-Fi AP", "station" to "Station", "tpms" to "TPMS")
 
         private val KIND_COLORS = mapOf(
             "ble" to Color.rgb(80, 200, 120),

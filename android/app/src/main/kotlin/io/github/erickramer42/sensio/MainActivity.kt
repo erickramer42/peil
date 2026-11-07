@@ -134,7 +134,8 @@ class MainActivity : Activity() {
             e.security,
             if (e.address == "randomized") "randomized" else null,
         ).joinToString(", ")
-        return "%-6s %s %-7s %s%s".format(e.band, dbm, KINDS[e.kind] ?: e.kind, e.device.substringAfter(':'), if (what.isEmpty()) "" else "  $what")
+        val head = "%-6s %s %-4s %s".format(e.band, dbm, KINDS[e.kind] ?: e.kind, e.device.substringAfter(':'))
+        return if (what.isEmpty()) head else "$head\n       $what"
     }
 
     private fun start() {
@@ -196,7 +197,7 @@ class MainActivity : Activity() {
             Manifest.permission.POST_NOTIFICATIONS,
         )
 
-        private val KINDS = mapOf("ble" to "BLE", "access_point" to "AP", "station" to "station", "tpms" to "TPMS")
+        private val KINDS = mapOf("ble" to "BLE", "access_point" to "AP", "station" to "STA", "tpms" to "TPMS")
 
         private val TRACKERS = mapOf(
             "apple_find_my" to "Find My",

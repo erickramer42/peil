@@ -46,7 +46,7 @@ class SessionService : Service() {
     private var seq = 0L
     private var pendingDrops = 0L
     private var sleptMs = 0L
-    private var gnssClockAtMs = Long.MIN_VALUE
+    private var gnssClockAtMs: Long? = null
     private var bleFiltered = false
     private val wifiSeen = HashMap<String, Long>()
 
@@ -177,7 +177,7 @@ class SessionService : Service() {
     private fun fix(location: Location) {
         val boot = SystemClock.elapsedRealtimeNanos()
         val now = SystemClock.elapsedRealtime()
-        if (location.provider == LocationManager.GPS_PROVIDER && now - gnssClockAtMs >= CLOCK_EVERY_MS) {
+        if (location.provider == LocationManager.GPS_PROVIDER && gnssClockAtMs.let { it == null || now - it >= CLOCK_EVERY_MS }) {
             // GNSS time at the fix, carried forward to now on the boot clock.
             val utc = location.time * 1_000_000 + (boot - location.elapsedRealtimeNanos)
             control(Feed.clock(boot, utc, gnss = true))
