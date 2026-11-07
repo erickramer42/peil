@@ -18,8 +18,12 @@ What none of them answers is the question Peil exists for: what is unusual in th
 ## Decision
 
 1. **Peil captures nothing itself.** Kismet, rtl_433 and gpsd are the sensor tier. Peil reads their output as a separate process: HTTP and websockets for Kismet, a pipe for rtl_433, a TCP socket for gpsd.
+
+   Amended 2026-11-06: on an Android phone the sensor tier is the operating system itself; the app reads Android's scan results and sensor readings and captures nothing below those interfaces (ADR-0004 section 3). Havne's `havne-cli`, for the vehicle's own data, is read the same way as the other programs: its JSON lines through a pipe.
 2. **Peil links none of their code.** The boundary is a process boundary, so Peil's own code stays under MIT while Kismet and rtl_433 stay under the GPL. Peil doesn't ship them; a user installs them. If a future package bundles them, it meets their licenses for those programs (source offer, license texts) and records that in THIRD_PARTY_NOTICES.md.
 3. **Peil's own parts** are the source adapters, recordings and replay, address-rotation linking, fusion, the judge, and its front ends: the CLI first, then a HUD.
+
+   Amended 2026-11-06: the first HUD is the Android app (ADR-0004), which runs the same core as the CLI.
 4. **The judge is deterministic.** Detectors produce evidence, never verdicts. The judge is a pure function of a session's events and a versioned rule set (`RULE_SET_VERSION`), and each verdict lists the evidence that produced it. No learned model or language model sits in the verdict path.
 5. **Peil is defensive.** It doesn't decode the contents of anyone's communications. It may transmit where that helps answer the question, for example an active BLE scan or querying a vehicle's own ECUs over the OBD port, but only through certified hardware used within its certification. It never transmits to interfere with, disrupt or impersonate other devices: no jamming, no deauthentication, no spoofing, and no transmitting from a general-purpose SDR outside a license the user holds.
 6. **Peil is written in Rust.** Because the sensor tier does the capture, the language is chosen for Peil's own work, not for driver or DSP libraries:
@@ -40,6 +44,6 @@ What none of them answers is the question Peil exists for: what is unusual in th
 - Address-rotation linking needs advert timing that a plain host Bluetooth scan blurs, so it will want Kismet fed by a dedicated BLE sniffer, read through its pcapng stream rather than its device records.
 - Rules can change freely, because recorded sessions replay through them and golden verdicts show what changed.
 - Rules differ by setting. In a moving vehicle the signal is a device that follows it across places (`persistence.places`). In a building, or a parked vehicle, it's a device that's new against the place's baseline, or one that stays through a night when nobody is there.
-- Linux is the primary platform: a small computer in the car or on site, with a GNSS receiver that has a PPS output for the session clock (ADR-0002). In a building GNSS reception may be poor; the clock then holds from its last sync, and the recording notes that.
-- The workspace forbids `unsafe` code. The one planned exception is a crate binding Havne's C ABI, which keeps the `unsafe` in one place behind a safe interface.
-- The minimum Rust version is 1.85 (the 2024 edition), and CI checks it. The HUD's toolkit is decided when the HUD is built.
+- Linux is the primary platform: a small computer in the car or on site, with a GNSS receiver that has a PPS output for the session clock (ADR-0002). In a building GNSS reception may be poor; the clock then holds from its last sync, and the recording notes that. Amended 2026-11-06: Android is a primary platform beside Linux, with the core running as a process inside the app (ADR-0004).
+- The workspace forbids `unsafe` code. Amended 2026-11-06: it has no planned exception. A crate binding Havne's C ABI was the one planned; Havne's C ABI may change with each 0.x release while `havne-cli`'s JSON lines (schema 1) only grow, so Peil reads `havne-cli` through a pipe instead.
+- The minimum Rust version is 1.85 (the 2024 edition), and CI checks it. The HUD's toolkit is decided when the HUD is built. Amended 2026-11-06: for the Android app, Android's platform APIs (ADR-0004 section 8).

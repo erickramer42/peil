@@ -1,6 +1,6 @@
 # ADR-0004: The Android app
 
-Status: Proposed. Not yet built.
+Status: Accepted. Not yet built: the spike on the test phone, the app, the core's Android build and streaming mode, the laptop link. Amends ADR-0001 sections 1 and 3 and its consequences, and ADR-0002 sections 1 and 3.
 
 ## Context
 
@@ -19,7 +19,7 @@ ADR-0001 assumes a Linux computer reading Kismet, rtl_433 and gpsd as separate p
 4. **Kotlin collects and displays; the core decides.** The app writes each scan result and sensor reading as a raw JSON line with its session time, and passes the lines to the core. The core runs as a separate process inside the app: the `peil` binary built for `aarch64-linux-android`, packaged in the APK as a native library so that Android installs it executable, started by the app and spoken to in JSON lines over stdin and stdout. Normalizing, merging sources, the judge and find mode's bearing estimate all run in Rust, so the phone's verdicts are the ones `peil judge` gives on Linux for the same events, and the workspace keeps forbidding `unsafe`. The pipe is framed the same way in both directions: a first line naming its schema, a `type` on every line, and a last line with a reason and totals. On a live session the app never blocks on a slow core: it drops lines and writes the count in-band. The live verdict at a time t is the judge over the events that arrived by t; the app records each time it asks the core to judge, so replaying the session through the same rules reproduces every verdict the user saw, at the moment it was shown. A lookback window, where a rule has one, is a parameter of that rule, not a property of the live loop.
 
    The alternatives weighed:
-   - **A JNI bridge** (the `jni` crate) calls the core in-process. Its exported functions need `#[no_mangle]`, a second exception to the ban on `unsafe` beside Havne's C ABI, and a crash in the core takes the app down with it.
+   - **A JNI bridge** (the `jni` crate) calls the core in-process. Its exported functions need `#[no_mangle]`, an exception to the workspace's ban on `unsafe`, and a crash in the core takes the app down with it.
    - **UniFFI** generates the Kotlin side, but it is MPL-2.0, outside `deny.toml`'s allowlist, and is an in-process bridge too.
    - **The judge rewritten in Kotlin** would be a second implementation of every rule, free to drift from the first.
 
