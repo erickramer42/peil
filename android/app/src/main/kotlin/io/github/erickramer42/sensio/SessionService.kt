@@ -27,6 +27,7 @@ import android.os.ParcelUuid
 import android.os.PowerManager
 import android.os.SystemClock
 import java.io.BufferedWriter
+import java.io.File
 
 /**
  * A session (ADR-0004 section 7): a foreground service of type `location`
@@ -41,7 +42,10 @@ class SessionService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var core: Core? = null
     private var file: BufferedWriter? = null
+    private lateinit var feed: File
     private var started = false
+    private var restarts = 0
+    private var coreStartedMs = 0L
 
     private var seq = 0L
     private var pendingDrops = 0L
@@ -103,11 +107,9 @@ class SessionService : Service() {
         Recordings.prune(this)
         Live.clear()
 
-        val binary = Recordings.coreBinary(this)
-        core = runCatching { Core(binary, ::fromCore, ::coreExited) }
-            .onFailure { Live.status("The core didn't start: ${it.message}", running = true) }
-            .getOrNull()
-        file = Recordings.newFeed(this).bufferedWriter()
+        startCore(restart = false)
+        feed = Recordings.newFeed(this)
+        file = feed.bufferedWriter()
         sleptMs = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis()
         val boot = SystemClock.elapsedRealtimeNanos()
         control(Feed.start("peil-android ${BuildInfo.version(this)}", boot))
@@ -247,9 +249,40 @@ class SessionService : Service() {
         }
     }
 
-    private fun coreExited(code: Int, err: String) {
-        synchronized(this) { core = null }
-        if (started) Live.status("The core stopped (exit $code)${if (err.isEmpty()) "" else ": $err"}")
+    /**
+     * Starts the core. A restarted one first reads the saved feed so far, so
+     * its picture goes on from the stopped one's; the lines that arrived in
+     * between were written withheld, and the `dropped` count that follows
+     * shows the gap as lost coverage (ADR-0004).
+     */
+    @Synchronized
+    private fun startCore(restart: Boolean) {
+        if (!started || core != null) return
+        val prelude = if (restart) {
+            file?.flush()
+            Core.Prelude(feed, feed.length())
+        } else {
+            null
+        }
+        core = runCatching { Core(Recordings.coreBinary(this), ::fromCore, ::coreExited, prelude) }
+            .onFailure { Live.status("The core didn't start: ${it.message}", running = true) }
+            .getOrNull()
+        coreStartedMs = SystemClock.elapsedRealtime()
+        if (restart && core != null) Live.status("The core restarted; the lines it missed are counted as not passed to it")
+    }
+
+    /** A core that stops during a session is restarted, after 1 s, then up to a minute if it keeps stopping. */
+    private fun coreExited(stopped: Core, code: Int, err: String) {
+        synchronized(this) {
+            if (core !== stopped) return
+            core = null
+            if (!started) return
+            if (SystemClock.elapsedRealtime() - coreStartedMs > RESTART_RESET_MS) restarts = 0
+            val delay = minOf(RESTART_MAX_MS, 1_000L shl minOf(restarts, 6))
+            restarts += 1
+            Live.status("The core stopped (exit $code)${if (err.isEmpty()) "" else ": $err"}; restarting in ${delay / 1000} s")
+            handler.postDelayed({ startCore(restart = true) }, delay)
+        }
     }
 
     private fun notification(): Notification {
@@ -293,6 +326,10 @@ class SessionService : Service() {
         const val JUDGE_EVERY_MS = 3_000L
         const val WIFI_EVERY_MS = 10_000L
         const val CLOCK_EVERY_MS = 60_000L
+        const val RESTART_MAX_MS = 60_000L
+
+        /** A core that ran this long before stopping starts the backoff over. */
+        const val RESTART_RESET_MS = 300_000L
 
         /** Buffer room kept for the session's own lines (judge, clock, slept). */
         const val RESERVE = 64
