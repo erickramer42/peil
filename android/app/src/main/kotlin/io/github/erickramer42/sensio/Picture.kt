@@ -95,6 +95,9 @@ object Live {
         private set
     @Volatile var running: Boolean = false
         private set
+    /** The laptop link's state, or null when it's off. */
+    @Volatile var link: String? = null
+        private set
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = mutableListOf<() -> Unit>()
@@ -108,6 +111,12 @@ object Live {
     fun status(status: String, running: Boolean = this.running) {
         this.status = status
         this.running = running
+        notifyListeners()
+    }
+
+    fun link(link: String?) {
+        if (link == this.link) return
+        this.link = link
         notifyListeners()
     }
 

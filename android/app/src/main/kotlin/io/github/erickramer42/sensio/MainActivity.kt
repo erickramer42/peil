@@ -32,6 +32,7 @@ class MainActivity : Activity() {
     private lateinit var deleteAll: Button
     private lateinit var mine: Button
     private lateinit var classic: Button
+    private lateinit var laptop: Button
     private val refresh: () -> Unit = { show() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,8 +46,10 @@ class MainActivity : Activity() {
         startStop = button("Start") { if (Live.running) stop() else start() }
         retention = button("") { cycleRetention() }
         deleteAll = button("Delete all") { confirmDeleteAll() }
+        val about = button("About") { About.show(this) }
         mine = button("Mine") { chooseMine() }
         classic = button("") { toggleClassic() }
+        laptop = button("") { toggleLaptop() }
 
         fun row(vararg views: View) = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -55,7 +58,7 @@ class MainActivity : Activity() {
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(row(startStop, mine, classic))
-            addView(row(retention, deleteAll))
+            addView(row(laptop, retention, deleteAll, about))
         }
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -114,6 +117,7 @@ class MainActivity : Activity() {
         startStop.text = if (running) "Stop" else "Start"
         retention.text = "Keep ${Recordings.retentionDays(this)} d"
         classic.text = if (Options.classic(this)) "Classic: on" else "Classic: off"
+        laptop.text = if (Options.link(this)) "Laptop: on" else "Laptop: off"
         deleteAll.isEnabled = !running
 
         val enrolled = Enrolled.devices(this)
@@ -124,6 +128,7 @@ class MainActivity : Activity() {
         val coverage = Live.coverage
         status.text = buildString {
             append(Live.status)
+            Live.link?.let { append('\n').append(it) }
             if (picture != null) {
                 append("\n${picture.emitters.size} emitters in the last ${picture.recentS} s, ${picture.older} older; ${picture.movement}")
                 if (hidden > 0) append("; $hidden of yours not shown")
@@ -182,6 +187,12 @@ class MainActivity : Activity() {
             requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), CLASSIC_REQUEST)
             return
         }
+        show()
+    }
+
+    /** The laptop link, off by default; a running session picks the change up within seconds. */
+    private fun toggleLaptop() {
+        Options.setLink(this, !Options.link(this))
         show()
     }
 

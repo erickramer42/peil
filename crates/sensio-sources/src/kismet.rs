@@ -283,3 +283,76 @@ fn advert(bt: Bluetooth) -> Advert {
         .collect();
     (manufacturer, service_data, service_uuids)
 }
+
+/// The paths in a device record that [`normalize`] reads, plus the record's
+/// key and Kismet's own last-seen time, which the laptop keeps beside its
+/// own (`sources.md`, Time).
+const KEEP: &[&[&str]] = &[
+    &["kismet.device.base.key"],
+    &["kismet.device.base.macaddr"],
+    &["kismet.device.base.phyname"],
+    &["kismet.device.base.type"],
+    &["kismet.device.base.frequency"],
+    &["kismet.device.base.crypt"],
+    &["kismet.device.base.last_time"],
+    &["kismet.device.base.signal", "kismet.common.signal.type"],
+    &[
+        "kismet.device.base.signal",
+        "kismet.common.signal.last_signal",
+    ],
+    &["dot11.device", "dot11.device.last_bssid"],
+    &[
+        "dot11.device",
+        "dot11.device.last_beaconed_ssid_record",
+        "dot11.advertisedssid.ssid",
+    ],
+    &[
+        "dot11.device",
+        "dot11.device.last_beaconed_ssid_record",
+        "dot11.advertisedssid.cloaked",
+    ],
+    &[
+        "dot11.device",
+        "dot11.device.last_beaconed_ssid_record",
+        "dot11.advertisedssid.crypt_string",
+    ],
+    &["bluetooth.device", "bluetooth.device.manuf_company_id"],
+    &["bluetooth.device", "bluetooth.device.manuf_data"],
+    &["bluetooth.device", "bluetooth.device.service_uuid_strs"],
+    &["bluetooth.device", "bluetooth.device.service_data_bytes"],
+    &["bluetooth.device", "bluetooth.device.class"],
+];
+
+/// A device record cut down to what [`normalize`] reads, in the same nested
+/// shape, so it normalizes exactly as the whole record does. The laptop sends
+/// this over the link (ADR-0004 section 6): a whole record carries signal
+/// histories, probed network names and WPS names, tens of kilobytes the
+/// phone has no use for. Kismet's own log keeps the whole record.
+#[must_use]
+pub fn prune(record: &Value) -> Value {
+    let mut out = serde_json::Map::new();
+    for path in KEEP {
+        let found = path.iter().try_fold(record, |v, key| v.get(key));
+        if let Some(value) = found {
+            insert(&mut out, path, value.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+fn insert(out: &mut serde_json::Map<String, Value>, path: &[&str], value: Value) {
+    match path {
+        [] => {}
+        [last] => {
+            out.insert((*last).to_owned(), value);
+        }
+        [first, rest @ ..] => {
+            let inner = out
+                .entry(*first)
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            if let Value::Object(inner) = inner {
+                insert(inner, rest, value);
+            }
+        }
+    }
+}

@@ -2,16 +2,26 @@
 //! record, and the input's text in every field of a BLE record and an
 //! access point's record under synthetic addresses. A record the normalizer
 //! accepts must give events the core accepts: the normalizer never produces
-//! what `Event::validate` rejects.
+//! what `Event::validate` rejects. A record pruned as the laptop sends it
+//! (`kismet::prune`) normalizes as the whole record does.
 
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use sensio_core::{Event, Normalize};
 use sensio_sources::Sources;
+use sensio_sources::kismet::prune;
 use serde_json::json;
 
+fn same_pruned(record: &serde_json::Value) {
+    let raw = record.to_string();
+    let whole = Sources.normalize("kismet", &raw).ok();
+    let pruned = Sources.normalize("kismet", &prune(record).to_string()).ok();
+    assert_eq!(whole, pruned, "pruning changed what the record gives: {raw}");
+}
+
 fn check(record: &serde_json::Value) {
+    same_pruned(record);
     let raw = record.to_string();
     let Ok(kinds) = Sources.normalize("kismet", &raw) else {
         return;
@@ -34,6 +44,9 @@ fuzz_target!(|data: &[u8]| {
         return;
     };
     let _ = Sources.normalize("kismet", text);
+    if let Ok(record @ serde_json::Value::Object(_)) = serde_json::from_str(text) {
+        same_pruned(&record);
+    }
 
     let number = data.iter().fold(0i64, |n, &b| n.wrapping_mul(31).wrapping_add(i64::from(b)));
     let signal = json!({"kismet.common.signal.type": "dbm", "kismet.common.signal.last_signal": number % 200});

@@ -47,6 +47,7 @@ object Recordings {
 object Options {
     private const val PREFS = "options"
     private const val CLASSIC = "classic_discovery"
+    private const val LINK = "laptop_link"
 
     /**
      * Bluetooth Classic discovery: off unless the user turns it on. It
@@ -58,6 +59,13 @@ object Options {
 
     fun setClassic(context: Context, on: Boolean) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(CLASSIC, on).apply()
+
+    /** The laptop link (ADR-0004 section 6): off unless the user turns it on. */
+    fun link(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(LINK, false)
+
+    fun setLink(context: Context, on: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(LINK, on).apply()
 }
 
 object BuildInfo {

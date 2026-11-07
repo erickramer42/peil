@@ -13,6 +13,8 @@ use sensio_core::{EventKind, Normalize};
 
 pub mod android;
 pub mod kismet;
+pub mod kismet_poll;
+pub mod link;
 pub mod sensio;
 mod wifi;
 

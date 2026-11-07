@@ -270,3 +270,56 @@ fn live_reports_a_bad_vendor_registry_with_its_line() {
         "{stderr}"
     );
 }
+
+#[test]
+fn link_stops_when_the_phone_refuses_the_code() {
+    use std::io::{BufRead, Write};
+    let phone = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+    let address = phone.local_addr().expect("address").to_string();
+    let phone = std::thread::spawn(move || {
+        let (stream, _) = phone.accept().expect("accept");
+        let mut hello = String::new();
+        std::io::BufReader::new(&stream)
+            .read_line(&mut hello)
+            .expect("a hello");
+        (&stream)
+            .write_all(b"{\"type\":\"refused\",\"reason\":\"wrong code\"}\n")
+            .expect("write");
+        hello
+    });
+    let output = peil(
+        &[
+            "link".as_ref(),
+            "--code".as_ref(),
+            "000000".as_ref(),
+            "--phone".as_ref(),
+            address.as_ref(),
+        ],
+        None,
+    );
+    let hello: serde_json::Value =
+        serde_json::from_str(&phone.join().expect("the phone")).expect("JSON");
+    assert_eq!(hello["type"], "hello");
+    assert_eq!(hello["schema"], "sensio.link/1");
+    assert_eq!(hello["code"], "000000");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("refused the link: wrong code"));
+}
+
+#[test]
+fn link_rejects_a_receiver_name_the_events_cant_carry() {
+    let output = peil(
+        &[
+            "link".as_ref(),
+            "--code".as_ref(),
+            "1".as_ref(),
+            "--phone".as_ref(),
+            "127.0.0.1".as_ref(),
+            "--receiver".as_ref(),
+            "My Laptop".as_ref(),
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("--receiver must be"));
+}

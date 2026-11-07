@@ -2,8 +2,11 @@
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::atomic::AtomicBool;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
@@ -12,6 +15,8 @@ use sensio_core::{
     DescribeParams, Live, PersistenceRule, RunError, VendorTable, describe, judge, parse_jsonl, run,
 };
 use sensio_sources::Sources;
+use sensio_sources::kismet_poll::Poller;
+use sensio_sources::link::{self, LinkError};
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -65,6 +70,27 @@ enum Command {
         /// The IEEE's MA-L, MA-M and MA-S lists (CSV), for vendor names.
         #[arg(long)]
         vendors: Option<PathBuf>,
+    },
+    /// Send this computer's Kismet devices to the app on the phone over the
+    /// USB tether (sensio.link/1), until stopped. Reads Kismet's API key from
+    /// `PEIL_KISMET_API_KEY` if Kismet asks for one.
+    Link {
+        /// The pairing code the app shows.
+        #[arg(long)]
+        code: String,
+        /// The phone's address, `ADDRESS` or `ADDRESS:PORT` [default: the
+        /// USB tether's gateway, on Linux].
+        #[arg(long)]
+        phone: Option<String>,
+        /// This computer's name in the session's events (a-z, 0-9, '-', '_', '.').
+        #[arg(long, default_value = "laptop")]
+        receiver: String,
+        /// Kismet's address.
+        #[arg(long, default_value = "http://127.0.0.1:2501")]
+        kismet: String,
+        /// Milliseconds between polls of Kismet.
+        #[arg(long, default_value_t = 2000, value_parser = clap::value_parser!(u64).range(250..=60_000))]
+        poll_ms: u64,
     },
 }
 
@@ -185,6 +211,94 @@ fn run_command(command: Command) -> Result<ExitCode> {
                 None => (Box::new(std::io::stdin().lock()), "stdin".to_owned()),
             };
             live(reader, &name, rule, all, vendors)
+        }
+        Command::Link {
+            code,
+            phone,
+            receiver,
+            kismet,
+            poll_ms,
+        } => link_until_stopped(&code, phone.as_deref(), &receiver, &kismet, poll_ms),
+    }
+}
+
+/// The laptop's clock: nanoseconds since the Unix epoch, UTC.
+fn wall_clock_ns() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_nanos()).unwrap_or(i64::MAX))
+}
+
+/// The phone's address: as given (the link's port if none), or the USB
+/// tether's gateway.
+fn phone_address(given: Option<&str>) -> Result<SocketAddr> {
+    if let Some(given) = given {
+        if let Ok(address) = given.parse::<SocketAddr>() {
+            return Ok(address);
+        }
+        let ip: IpAddr = given
+            .parse()
+            .map_err(|_| anyhow!("--phone: not an address or address:port"))?;
+        return Ok(SocketAddr::new(ip, link::PORT));
+    }
+    let routes = std::fs::read_to_string("/proc/net/route")
+        .context("finding the phone without --phone needs Linux's /proc/net/route")?;
+    let gateway = link::tether_gateway(&routes).ok_or_else(|| {
+        anyhow!("no USB tether found; turn on USB tethering on the phone, or give --phone")
+    })?;
+    Ok(SocketAddr::new(IpAddr::V4(gateway), link::PORT))
+}
+
+/// Link sessions, one after another with a backoff, until a refusal.
+fn link_until_stopped(
+    code: &str,
+    phone: Option<&str>,
+    receiver: &str,
+    kismet: &str,
+    poll_ms: u64,
+) -> Result<ExitCode> {
+    if !sensio_core::event::is_label(receiver) {
+        return Err(anyhow!(
+            "--receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'"
+        ));
+    }
+    let api_key = std::env::var("PEIL_KISMET_API_KEY")
+        .ok()
+        .filter(|k| !k.is_empty());
+    let poll_every = Duration::from_millis(poll_ms);
+    // Kismet is asked for a window wider than the poll, so a slow poll misses nothing.
+    let window_s = u32::try_from(poll_ms.div_ceil(1000) * 3).unwrap_or(u32::MAX);
+    let stop = AtomicBool::new(false);
+    let mut backoff = Duration::from_secs(1);
+    loop {
+        let started = std::time::Instant::now();
+        let ended = phone_address(phone).and_then(|address| {
+            let config = link::Config {
+                phone: address,
+                code: code.to_owned(),
+                receiver: receiver.to_owned(),
+                app: format!("peil {}", env!("CARGO_PKG_VERSION")),
+                poll_every,
+            };
+            let mut poller = Poller::new(kismet, api_key.clone(), window_s);
+            link::run_session(&config, &mut poller, wall_clock_ns, &stop, &mut |text| {
+                eprintln!("{text}");
+            })
+            .map_err(anyhow::Error::from)
+        });
+        match ended {
+            Ok(()) => return Ok(ExitCode::SUCCESS),
+            Err(err) if matches!(err.downcast_ref(), Some(LinkError::Refused(_))) => {
+                return Err(err);
+            }
+            Err(err) => {
+                if started.elapsed() > Duration::from_secs(60) {
+                    backoff = Duration::from_secs(1);
+                }
+                eprintln!("{err:#}; trying again in {} s", backoff.as_secs());
+                std::thread::sleep(backoff);
+                backoff = (backoff * 2).min(Duration::from_secs(30));
+            }
         }
     }
 }

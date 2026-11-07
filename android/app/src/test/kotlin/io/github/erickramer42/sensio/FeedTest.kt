@@ -45,4 +45,17 @@ class FeedTest {
         assertEquals("""{"type":"clock","boot_ns":1,"utc_ns":2,"basis":"gnss"}""", Feed.clock(1, 2, gnss = true))
         assertEquals("""{"type":"dropped","source":"android","receiver":"phone","lines":4}""", Feed.dropped(4))
     }
+
+    @Test
+    fun aLaptopLineCarriesItsSourceReceiverAndOwnStampAndItsOffsetLineThePair() {
+        assertEquals(
+            """{"type":"line","seq":5,"boot_ns":6,"source":"kismet","receiver":"laptop","remote_ns":7,"raw":"{}","withheld":true}""",
+            Feed.line(5, 6, "{}", withheld = true, source = "kismet", receiver = "laptop", remoteNs = 7),
+        )
+        assertEquals(
+            """{"type":"offset","receiver":"laptop","offset_ns":-12,"uncertainty_ns":3}""",
+            Feed.offset("laptop", -12, 3),
+        )
+        assertEquals("""{"type":"dropped","source":"kismet","receiver":"laptop","lines":2}""", Feed.dropped(2, "kismet", "laptop"))
+    }
 }

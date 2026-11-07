@@ -21,13 +21,28 @@ object Feed {
     fun clock(bootNs: Long, utcNs: Long, gnss: Boolean) =
         """{"type":"clock","boot_ns":$bootNs,"utc_ns":$utcNs,"basis":"${if (gnss) "gnss" else "system"}"}"""
 
-    fun line(seq: Long, bootNs: Long, raw: String, withheld: Boolean = false) =
-        """{"type":"line","seq":$seq,"boot_ns":$bootNs,"source":"$SOURCE","receiver":"$RECEIVER","raw":${quote(raw)}""" +
-            (if (withheld) ""","withheld":true}""" else "}")
+    /** A receiver's clock offset: this phone's boot clock minus the receiver's own clock (ADR-0005). */
+    fun offset(receiver: String, offsetNs: Long, uncertaintyNs: Long) =
+        """{"type":"offset","receiver":${quote(receiver)},"offset_ns":$offsetNs,"uncertainty_ns":$uncertaintyNs}"""
+
+    /** A source's line; [remoteNs] is a remote receiver's own stamp for it, on its clock. */
+    fun line(
+        seq: Long,
+        bootNs: Long,
+        raw: String,
+        withheld: Boolean = false,
+        source: String = SOURCE,
+        receiver: String = RECEIVER,
+        remoteNs: Long? = null,
+    ) = """{"type":"line","seq":$seq,"boot_ns":$bootNs,"source":${quote(source)},"receiver":${quote(receiver)}""" +
+        (if (remoteNs != null) ""","remote_ns":$remoteNs""" else "") +
+        ""","raw":${quote(raw)}""" +
+        (if (withheld) ""","withheld":true}""" else "}")
 
     fun judge(bootNs: Long) = """{"type":"judge","boot_ns":$bootNs}"""
 
-    fun dropped(lines: Long) = """{"type":"dropped","source":"$SOURCE","receiver":"$RECEIVER","lines":$lines}"""
+    fun dropped(lines: Long, source: String = SOURCE, receiver: String = RECEIVER) =
+        """{"type":"dropped","source":${quote(source)},"receiver":${quote(receiver)},"lines":$lines}"""
 
     fun slept(bootNs: Long, sleptNs: Long) = """{"type":"slept","boot_ns":$bootNs,"slept_ns":$sleptNs}"""
 

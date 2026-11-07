@@ -45,6 +45,7 @@ class SessionService : Service() {
     private lateinit var handler: Handler
     private var wakeLock: PowerManager.WakeLock? = null
     private var core: Core? = null
+    private var link: Link? = null
     private var file: BufferedWriter? = null
     private lateinit var feed: File
     private var started = false
@@ -52,7 +53,8 @@ class SessionService : Service() {
     private var coreStartedMs = 0L
 
     private var seq = 0L
-    private var pendingDrops = 0L
+    /** Lines not passed to the core, by source and receiver, until a `dropped` line says so. */
+    private val pendingDrops = LinkedHashMap<Pair<String, String>, Long>()
     private var sleptMs = 0L
     private var gnssClockAtMs: Long? = null
     private var bleFiltered = false
@@ -167,6 +169,11 @@ class SessionService : Service() {
         getSystemService(LocationManager::class.java)
             .requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, locationListener, worker.looper)
         handler.postDelayed(tick, JUDGE_EVERY_MS)
+        link = Link(
+            this,
+            line = { source, receiver, remoteNs, raw -> data(raw, source, receiver, remoteNs) },
+            offset = { receiver, offsetNs, uncertaintyNs -> control(Feed.offset(receiver, offsetNs, uncertaintyNs)) },
+        )
         val throttle = if (wifi.isScanThrottleEnabled) "on (4 scans per 2 minutes)" else "off"
         if (core != null) Live.status("Session running; Wi-Fi scan throttling $throttle", running = true)
         return START_NOT_STICKY
@@ -250,24 +257,25 @@ class SessionService : Service() {
      * room (ADR-0005 section 5).
      */
     @Synchronized
-    private fun data(raw: String) {
+    private fun data(raw: String, source: String = Feed.SOURCE, receiver: String = Feed.RECEIVER, remoteNs: Long? = null) {
         if (file == null) return
         val boot = SystemClock.elapsedRealtimeNanos()
         seq += 1
         val c = core
-        if (c != null && pendingDrops > 0 && c.hasRoom(RESERVE + 2)) {
-            val dropped = Feed.dropped(pendingDrops)
-            if (c.offer(dropped)) {
-                write(dropped)
-                pendingDrops = 0
-            }
+        val pending = pendingDrops.iterator()
+        while (c != null && pending.hasNext() && c.hasRoom(RESERVE + 2)) {
+            val (key, lines) = pending.next()
+            val dropped = Feed.dropped(lines, key.first, key.second)
+            if (!c.offer(dropped)) break
+            write(dropped)
+            pending.remove()
         }
-        val line = Feed.line(seq, boot, raw)
-        if (c != null && pendingDrops == 0L && c.hasRoom(RESERVE + 1) && c.offer(line)) {
+        val line = Feed.line(seq, boot, raw, source = source, receiver = receiver, remoteNs = remoteNs)
+        if (c != null && pendingDrops.isEmpty() && c.hasRoom(RESERVE + 1) && c.offer(line)) {
             write(line)
         } else {
-            write(Feed.line(seq, boot, raw, withheld = true))
-            pendingDrops += 1
+            write(Feed.line(seq, boot, raw, withheld = true, source = source, receiver = receiver, remoteNs = remoteNs))
+            pendingDrops.merge(Pair(source, receiver), 1L, Long::plus)
         }
     }
 
@@ -342,6 +350,8 @@ class SessionService : Service() {
         if (started) {
             started = false
             handler.removeCallbacksAndMessages(null)
+            link?.close()
+            link = null
             runCatching { getSystemService(BluetoothManager::class.java).adapter?.bluetoothLeScanner?.stopScan(bleCallback) }
             runCatching { unregisterReceiver(wifiReceiver) }
             runCatching { unregisterReceiver(screenReceiver) }

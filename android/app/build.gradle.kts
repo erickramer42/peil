@@ -34,6 +34,12 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
+// LicensesTest reads the license files from disk, so they're its inputs too.
+tasks.withType<Test>().configureEach {
+    inputs.dir("src/main/assets/licenses")
+    inputs.file(rootProject.file("../LICENSE-MIT"))
+}
+
 // ADR-0004 sections 8 and 9: the APK packages the Kotlin standard library
 // and its annotations, and nothing else. Fails on any other library, and on
 // finding none, which would mean the check looked at the wrong thing.

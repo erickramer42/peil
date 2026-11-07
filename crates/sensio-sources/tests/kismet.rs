@@ -4,10 +4,21 @@
 use sensio_core::event::{ManufacturerData, WifiProtocol, WifiSecurity};
 use sensio_core::{EventKind, Normalize};
 use sensio_sources::Sources;
+use sensio_sources::kismet::prune;
 use serde_json::json;
 
+/// The record normalized, after checking that its pruned form, as the laptop
+/// sends it, normalizes the same.
 fn kismet(record: &serde_json::Value) -> Result<Vec<EventKind>, String> {
-    Sources.normalize("kismet", &record.to_string())
+    let whole = Sources.normalize("kismet", &record.to_string());
+    let pruned = Sources.normalize("kismet", &prune(record).to_string());
+    assert_eq!(
+        whole.as_ref().ok(),
+        pruned.as_ref().ok(),
+        "pruning changed: {record}"
+    );
+    assert_eq!(whole.is_ok(), pruned.is_ok(), "pruning changed: {record}");
+    whole
 }
 
 fn signal(last: i64) -> serde_json::Value {
@@ -57,6 +68,41 @@ fn an_access_point_gives_its_beaconed_name_channel_strength_and_security() {
     );
     let text = format!("{kinds:?}");
     assert!(!text.contains("zz-"), "a probe or WPS name leaked: {text}");
+}
+
+#[test]
+fn a_pruned_record_keeps_no_probe_wps_name_or_signal_history() {
+    let record = json!({
+        "kismet.device.base.key": "4202770D00000000_0100CCCCCCCC",
+        "kismet.device.base.macaddr": "CC:CC:CC:00:00:01",
+        "kismet.device.base.phyname": "IEEE802.11",
+        "kismet.device.base.type": "Wi-Fi AP",
+        "kismet.device.base.last_time": 1_800_000_000,
+        "kismet.device.base.signal": signal(-61),
+        "dot11.device": {
+            "dot11.device.last_beaconed_ssid_record": {
+                "dot11.advertisedssid.ssid": "example-hotspot",
+                "dot11.advertisedssid.wps_device_name": "zz-wps-name"
+            },
+            "dot11.device.probed_ssid_map": [{"dot11.probedssid.ssid": "zz-probed-name"}]
+        }
+    });
+    let pruned = prune(&record);
+    let text = pruned.to_string();
+    assert!(
+        !text.contains("zz-"),
+        "a probe or WPS name was kept: {text}"
+    );
+    assert!(
+        !text.contains("rrd") && !text.contains("min_signal"),
+        "history kept: {text}"
+    );
+    assert_eq!(
+        pruned["kismet.device.base.key"],
+        record["kismet.device.base.key"]
+    );
+    assert_eq!(pruned["kismet.device.base.last_time"], 1_800_000_000);
+    assert_eq!(kismet(&record).expect("normalizes").len(), 1);
 }
 
 #[test]
