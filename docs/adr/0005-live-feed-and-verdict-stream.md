@@ -1,6 +1,6 @@
 # ADR-0005: The live feed and the verdict stream
 
-Status: Proposed. Not yet built.
+Status: Accepted. Built: the feed and verdict-stream formats, `peil live`, and the `sensio` source's normalizer. Not yet built: the Android and Kismet normalizers, and an `end` for an interrupted stream.
 
 ## Context
 

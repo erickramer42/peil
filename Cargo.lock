@@ -409,6 +409,7 @@ dependencies = [
  "anyhow",
  "clap",
  "sensio-core",
+ "sensio-sources",
  "serde_json",
 ]
 
@@ -428,6 +429,7 @@ name = "sensio-sources"
 version = "0.1.0"
 dependencies = [
  "sensio-core",
+ "serde_json",
 ]
 
 [[package]]

@@ -85,3 +85,136 @@ fn judge_reports_a_bad_line_without_quoting_its_value() {
     );
     assert!(!stderr.contains("zz:zz:zz"), "{stderr}");
 }
+
+fn feed_fixture() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../sensio-core/tests/fixtures/drive.feed")
+}
+
+fn peil(args: &[&std::ffi::OsStr], stdin: Option<&[u8]>) -> std::process::Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_peil"))
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("peil runs");
+    let mut input = child.stdin.take().expect("a stdin");
+    std::io::Write::write_all(&mut input, stdin.unwrap_or_default()).expect("stdin is written");
+    drop(input);
+    child.wait_with_output().expect("peil exits")
+}
+
+/// The devices in the stream's last answer, and the types of its lines.
+fn last_answer(stdout: &[u8]) -> (Vec<String>, Vec<String>) {
+    let lines: Vec<serde_json::Value> = std::str::from_utf8(stdout)
+        .expect("UTF-8 output")
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line is JSON"))
+        .collect();
+    let types = lines
+        .iter()
+        .map(|v| v["type"].as_str().expect("a type").to_owned())
+        .collect();
+    let answer = lines
+        .iter()
+        .rev()
+        .find(|v| v["type"] == "verdicts")
+        .expect("an answer");
+    let devices = answer["verdicts"]
+        .as_array()
+        .expect("verdicts")
+        .iter()
+        .map(|v| {
+            format!(
+                "{} x{}",
+                v["device"].as_str().expect("a device"),
+                v["sightings"]
+            )
+        })
+        .collect();
+    (devices, types)
+}
+
+#[test]
+fn live_replays_a_saved_feed() {
+    let output = peil(&["live".as_ref(), feed_fixture().as_os_str()], None);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let (devices, types) = last_answer(&output.stdout);
+    assert_eq!(devices, ["ble:aa:aa:aa:00:00:01 x3", "tpms:0a1b2c3d x3"]);
+    assert_eq!(types.first().map(String::as_str), Some("start"));
+    assert_eq!(types.last().map(String::as_str), Some("end"));
+    assert_eq!(types.iter().filter(|t| *t == "verdicts").count(), 3);
+}
+
+#[test]
+fn live_with_all_judges_withheld_lines_too() {
+    let output = peil(
+        &[
+            "live".as_ref(),
+            "--all".as_ref(),
+            feed_fixture().as_os_str(),
+        ],
+        None,
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        last_answer(&output.stdout).0,
+        ["ble:aa:aa:aa:00:00:01 x4", "tpms:0a1b2c3d x3"]
+    );
+}
+
+#[test]
+fn live_reads_stdin_as_it_reads_a_file() {
+    let feed = std::fs::read(feed_fixture()).expect("the fixture reads");
+    let from_stdin = peil(&["live".as_ref()], Some(&feed));
+    let from_file = peil(&["live".as_ref(), feed_fixture().as_os_str()], None);
+    assert!(from_stdin.status.success());
+    assert_eq!(from_stdin.stdout, from_file.stdout);
+}
+
+#[test]
+fn live_gives_the_same_bytes_twice() {
+    let fixture = feed_fixture();
+    let args = ["live".as_ref(), fixture.as_os_str()];
+    assert_eq!(peil(&args, None).stdout, peil(&args, None).stdout);
+}
+
+#[test]
+fn live_takes_the_rule_flags() {
+    let fixture = feed_fixture();
+    let args = [
+        "live".as_ref(),
+        "--all".as_ref(),
+        "--min-places=4".as_ref(),
+        fixture.as_os_str(),
+    ];
+    let output = peil(&args, None);
+    assert!(output.status.success());
+    assert_eq!(last_answer(&output.stdout).0, ["ble:aa:aa:aa:00:00:01 x4"]);
+}
+
+#[test]
+fn live_exits_2_on_input_that_isnt_a_feed() {
+    for input in [&b"{\"t_ns\":1}\n"[..], b""] {
+        let output = peil(&["live".as_ref()], Some(input));
+        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(stderr.starts_with("Error: stdin: "), "{stderr}");
+    }
+}
+
+#[test]
+fn live_reports_a_missing_file() {
+    let output = peil(&["live".as_ref(), "no-such-file.feed".as_ref()], None);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("opening no-such-file.feed"));
+}

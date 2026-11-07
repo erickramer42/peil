@@ -1,0 +1,201 @@
+---
+source: crates/sensio-core/tests/live.rs
+expression: "lines[1..]"
+---
+[
+  {
+    "type": "coverage",
+    "sources": [
+      {
+        "source": "sensio",
+        "lines": 9,
+        "events": 9,
+        "rejected": 0,
+        "withheld": 0,
+        "dropped": 0
+      }
+    ],
+    "feed_rejected": 0,
+    "torn": 0,
+    "slept_ns": 0
+  },
+  {
+    "type": "verdicts",
+    "judge_line": 12,
+    "boot_ns": 607000000000,
+    "verdicts": []
+  },
+  {
+    "type": "coverage",
+    "sources": [
+      {
+        "source": "sensio",
+        "lines": 12,
+        "events": 12,
+        "rejected": 0,
+        "withheld": 0,
+        "dropped": 0
+      }
+    ],
+    "feed_rejected": 0,
+    "torn": 0,
+    "slept_ns": 0
+  },
+  {
+    "type": "verdicts",
+    "judge_line": 16,
+    "boot_ns": 1207000000000,
+    "verdicts": [
+      {
+        "device": "ble:aa:aa:aa:00:00:01",
+        "rule": "persistence.places",
+        "rule_set_version": 1,
+        "first_seen_ns": 1800000001000000000,
+        "last_seen_ns": 1800001201000000000,
+        "sightings": 3,
+        "unlocated_sightings": 0,
+        "places": [
+          {
+            "first_seen_ns": 1800000001000000000,
+            "lat_deg": 60.0,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800000601000000000,
+            "lat_deg": 60.01,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800001201000000000,
+            "lat_deg": 60.02,
+            "lon_deg": 10.0
+          }
+        ]
+      },
+      {
+        "device": "tpms:0a1b2c3d",
+        "rule": "persistence.places",
+        "rule_set_version": 1,
+        "first_seen_ns": 1800000004000000000,
+        "last_seen_ns": 1800001204000000000,
+        "sightings": 3,
+        "unlocated_sightings": 0,
+        "places": [
+          {
+            "first_seen_ns": 1800000004000000000,
+            "lat_deg": 60.0,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800000604000000000,
+            "lat_deg": 60.01,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800001204000000000,
+            "lat_deg": 60.02,
+            "lon_deg": 10.0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "coverage",
+    "sources": [
+      {
+        "source": "sensio",
+        "lines": 15,
+        "events": 14,
+        "rejected": 0,
+        "withheld": 1,
+        "dropped": 1
+      }
+    ],
+    "feed_rejected": 0,
+    "torn": 0,
+    "slept_ns": 30000000000
+  },
+  {
+    "type": "verdicts",
+    "judge_line": 23,
+    "boot_ns": 1903000000000,
+    "verdicts": [
+      {
+        "device": "ble:aa:aa:aa:00:00:01",
+        "rule": "persistence.places",
+        "rule_set_version": 1,
+        "first_seen_ns": 1800000001000000000,
+        "last_seen_ns": 1800001201000000000,
+        "sightings": 3,
+        "unlocated_sightings": 0,
+        "places": [
+          {
+            "first_seen_ns": 1800000001000000000,
+            "lat_deg": 60.0,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800000601000000000,
+            "lat_deg": 60.01,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800001201000000000,
+            "lat_deg": 60.02,
+            "lon_deg": 10.0
+          }
+        ]
+      },
+      {
+        "device": "tpms:0a1b2c3d",
+        "rule": "persistence.places",
+        "rule_set_version": 1,
+        "first_seen_ns": 1800000004000000000,
+        "last_seen_ns": 1800001204000000000,
+        "sightings": 3,
+        "unlocated_sightings": 0,
+        "places": [
+          {
+            "first_seen_ns": 1800000004000000000,
+            "lat_deg": 60.0,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800000604000000000,
+            "lat_deg": 60.01,
+            "lon_deg": 10.0
+          },
+          {
+            "first_seen_ns": 1800001204000000000,
+            "lat_deg": 60.02,
+            "lon_deg": 10.0
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "coverage",
+    "sources": [
+      {
+        "source": "sensio",
+        "lines": 15,
+        "events": 14,
+        "rejected": 0,
+        "withheld": 1,
+        "dropped": 1
+      }
+    ],
+    "feed_rejected": 0,
+    "torn": 0,
+    "slept_ns": 30000000000
+  },
+  {
+    "type": "end",
+    "reason": "input_closed",
+    "feed_lines": 23,
+    "judged": 3,
+    "events": 14
+  }
+]

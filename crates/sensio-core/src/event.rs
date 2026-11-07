@@ -181,7 +181,7 @@ pub fn parse_jsonl(reader: impl BufRead) -> Result<Vec<Event>, ParseError> {
             column: err.column(),
             reason: reason_without_values(&err),
         })?;
-        validate(&event).map_err(|reason| ParseError::Invalid {
+        event.validate().map_err(|reason| ParseError::Invalid {
             line: line_no,
             reason,
         })?;
@@ -198,7 +198,8 @@ pub fn parse_jsonl(reader: impl BufRead) -> Result<Vec<Event>, ParseError> {
 /// those keep their kind and the schema's "expected" part, and lose the
 /// value. The "expected" part is found from the end, because serde writes it
 /// after the value, and a value can itself contain ", expected ".
-fn reason_without_values(err: &serde_json::Error) -> String {
+#[must_use]
+pub fn reason_without_values(err: &serde_json::Error) -> String {
     let message = err.to_string();
     // `serde_json` appends " at line L column C"; the line and column are kept apart.
     let message = message
@@ -252,12 +253,28 @@ fn validate_wifi_radio(freq_mhz: Option<u32>, rssi_dbm: Option<i16>) -> Result<(
     Ok(())
 }
 
+/// Whether `s` is a name the user or a front end chose (a receiver, a source):
+/// 1 to 32 characters of `a-z`, `0-9`, `-`, `_` or `.`.
+#[must_use]
+pub fn is_label(s: &str) -> bool {
+    let allowed = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b);
+    !s.is_empty() && s.len() <= 32 && s.bytes().all(allowed)
+}
+
+impl Event {
+    /// Checks every value against its range.
+    ///
+    /// # Errors
+    ///
+    /// Returns what's wrong, without the value itself.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        validate(self)
+    }
+}
+
 fn validate(event: &Event) -> Result<(), &'static str> {
-    if let Some(receiver) = &event.receiver {
-        let allowed = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b);
-        if receiver.is_empty() || receiver.len() > 32 || !receiver.bytes().all(allowed) {
-            return Err("receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'");
-        }
+    if event.receiver.as_deref().is_some_and(|r| !is_label(r)) {
+        return Err("receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'");
     }
     match &event.kind {
         EventKind::GnssFix { lat_deg, lon_deg } => {

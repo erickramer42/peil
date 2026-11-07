@@ -13,9 +13,10 @@ An early scaffold. What works today:
 - The normalized event schema (BLE adverts, Wi-Fi access points and stations, TPMS transmissions, GNSS fixes, each with the receiver that saw it) as JSON lines, with input validation whose errors never repeat the input's values.
 - The judge with one rule, `persistence.places`: a device seen at several distinct places over a span of time. It's the first of a family of anomaly evidence ([ADR-0001](docs/adr/0001-scope-and-sensor-boundary.md)); its parameters are checked before it runs.
 - `peil judge <events.jsonl>`: one verdict per line, as JSON.
-- Golden verdicts for a synthetic drive, and a property test that verdicts don't depend on input order.
+- `peil live [feed]`: reads a live feed from a file or stdin and answers each request in it with the verdicts over the events before it ([ADR-0005](docs/adr/0005-live-feed-and-verdict-stream.md)). A saved feed replays to the same bytes. Its one source so far is `sensio`, a normalized event carried as a raw line.
+- Golden verdicts for a synthetic drive, as events and as a feed; property tests that verdicts don't depend on input order and that each live answer is the judge over the events before it.
 
-Not built yet: the source adapters, recordings and replay, linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
+Not built yet: the Android app, the source adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
 
 ## How it fits together
 
@@ -41,7 +42,16 @@ Rust 1.85 or newer.
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p sensio-cli -- judge crates/sensio-core/tests/fixtures/drive.jsonl
+cargo run -p sensio-cli -- live crates/sensio-core/tests/fixtures/drive.feed
 cargo deny check     # licenses, bans, sources, advisories (from cargo install cargo-deny)
+```
+
+Fuzz targets for the parsers of untrusted input (the event lines, the feed, the live judge) are in `fuzz/`, a crate of its own that needs a nightly toolchain and [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
+
+```sh
+cd fuzz
+cargo +nightly fuzz list
+cargo +nightly fuzz run -a live_session -- -max_total_time=600
 ```
 
 Golden verdicts are [insta](https://insta.rs) snapshots. After a deliberate rule change, review the new ones with `cargo insta review` (from `cargo install cargo-insta`) and bump `RULE_SET_VERSION`.
@@ -61,6 +71,19 @@ One JSON object per line. `t_ns` is nanoseconds since the Unix epoch (UTC) on th
 A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for.
 
 A line that can't be used is rejected with its line, its column and what's wrong (`line 3, column 110: invalid type: string (value left out), expected i16`), never with the value itself: those are other people's identifiers.
+
+## Live feed
+
+`peil live` reads `sensio.feed/1`, the format the app writes both to the core and to a session's saved file, so a replay is the same command over the file ([ADR-0005](docs/adr/0005-live-feed-and-verdict-stream.md)). Each `line` keeps a source's output as received, with its arrival on the phone's boot clock; a `clock` line maps that clock to UTC, and a `judge` line asks for verdicts.
+
+```json
+{"type":"start","schema":"sensio.feed/1","app":"fixture","boot_ns":1000000000}
+{"type":"clock","boot_ns":1000000000,"utc_ns":1799999999000000000,"basis":"gnss"}
+{"type":"line","seq":1,"boot_ns":2000000000,"source":"sensio","raw":"{\"kind\":\"gnss_fix\",\"lat_deg\":60.0,\"lon_deg\":10.0}"}
+{"type":"judge","boot_ns":3000000000}
+```
+
+It answers with `sensio.verdicts/1`: a `start` line, then for each `judge` a `coverage` line (lines seen, rejected, withheld and dropped, per source and receiver) and a `verdicts` line with the full verdict set, a `rejected` line for each line it couldn't use, and an `end`. Input that isn't a feed exits with code 2. Lines the app saved but couldn't pass to the core live are marked `withheld`; `peil live --all` judges them too.
 
 ## Use and privacy
 
