@@ -52,6 +52,16 @@ fn a_128_bit_uuid_is_written_in_its_long_form() {
 }
 
 #[test]
+fn an_advert_without_a_strength_keeps_the_advert() {
+    let raw = r#"{"t":"ble","addr":"aa:aa:aa:00:00:01","rssi":127,"record":"020106"}"#;
+    let kinds = android(raw).expect("the line normalizes");
+    let EventKind::BleAdvert { rssi_dbm, .. } = &kinds[0] else {
+        panic!("not an advert: {kinds:?}");
+    };
+    assert_eq!(*rssi_dbm, None);
+}
+
+#[test]
 fn a_bad_ble_record_is_rejected() {
     for (record, why) in [
         ("0aff4c00", "longer than the record"),

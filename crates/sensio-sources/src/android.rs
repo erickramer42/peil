@@ -78,7 +78,8 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
             let (manufacturer_data, service_data, service_uuids) = parse_record(&bytes)?;
             Ok(vec![EventKind::BleAdvert {
                 addr,
-                rssi_dbm: rssi,
+                // Android reports 127 when it has no strength for a result.
+                rssi_dbm: rssi.filter(|r| (-127..=20).contains(r)),
                 manufacturer_data,
                 service_data,
                 service_uuids,
