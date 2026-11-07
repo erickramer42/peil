@@ -20,6 +20,68 @@ expression: "live(FEED, true)[1..]"
     "slept_ns": 0
   },
   {
+    "type": "emitters",
+    "judge_line": 12,
+    "describe_version": 1,
+    "recent_ns": 60000000000,
+    "at_ns": 1800000605000000000,
+    "movement": "parked",
+    "emitters": [
+      {
+        "device": "ble:aa:aa:aa:00:00:01",
+        "kind": "ble",
+        "receivers": [],
+        "first_seen_ns": 1800000001000000000,
+        "last_seen_ns": 1800000601000000000,
+        "sightings": 2,
+        "latest_dbm": -60.0,
+        "strongest_dbm": -60.0,
+        "band": "strong",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "ble"
+      },
+      {
+        "device": "ble:cc:cc:cc:00:00:03",
+        "kind": "ble",
+        "receivers": [],
+        "first_seen_ns": 1800000003000000000,
+        "last_seen_ns": 1800000603000000000,
+        "sightings": 2,
+        "latest_dbm": -72.0,
+        "strongest_dbm": -72.0,
+        "band": "medium",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "ble"
+      },
+      {
+        "device": "tpms:0a1b2c3d",
+        "kind": "tpms",
+        "receivers": [],
+        "first_seen_ns": 1800000004000000000,
+        "last_seen_ns": 1800000604000000000,
+        "sightings": 2,
+        "latest_dbm": -13.0,
+        "strongest_dbm": -13.0,
+        "band": "unknown",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "not_an_address"
+      }
+    ],
+    "older": 1
+  },
+  {
     "type": "verdicts",
     "judge_line": 12,
     "boot_ns": 607000000000,
@@ -40,6 +102,51 @@ expression: "live(FEED, true)[1..]"
     "feed_rejected": 0,
     "torn": 0,
     "slept_ns": 0
+  },
+  {
+    "type": "emitters",
+    "judge_line": 16,
+    "describe_version": 1,
+    "recent_ns": 60000000000,
+    "at_ns": 1800001205000000000,
+    "movement": "parked",
+    "emitters": [
+      {
+        "device": "ble:aa:aa:aa:00:00:01",
+        "kind": "ble",
+        "receivers": [],
+        "first_seen_ns": 1800000001000000000,
+        "last_seen_ns": 1800001201000000000,
+        "sightings": 3,
+        "latest_dbm": -57.0,
+        "strongest_dbm": -57.0,
+        "band": "strong",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "ble"
+      },
+      {
+        "device": "tpms:0a1b2c3d",
+        "kind": "tpms",
+        "receivers": [],
+        "first_seen_ns": 1800000004000000000,
+        "last_seen_ns": 1800001204000000000,
+        "sightings": 3,
+        "latest_dbm": -12.0,
+        "strongest_dbm": -12.0,
+        "band": "unknown",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "not_an_address"
+      }
+    ],
+    "older": 2
   },
   {
     "type": "verdicts",
@@ -115,6 +222,34 @@ expression: "live(FEED, true)[1..]"
     "feed_rejected": 0,
     "torn": 0,
     "slept_ns": 30000000000
+  },
+  {
+    "type": "emitters",
+    "judge_line": 23,
+    "describe_version": 1,
+    "recent_ns": 60000000000,
+    "at_ns": 1800001901000000000,
+    "movement": "parked",
+    "emitters": [
+      {
+        "device": "ble:dd:dd:dd:00:00:04",
+        "kind": "ble",
+        "receivers": [],
+        "first_seen_ns": 1800001900000000000,
+        "last_seen_ns": 1800001900000000000,
+        "sightings": 1,
+        "latest_dbm": -77.0,
+        "strongest_dbm": -77.0,
+        "band": "medium",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "ble"
+      }
+    ],
+    "older": 4
   },
   {
     "type": "verdicts",

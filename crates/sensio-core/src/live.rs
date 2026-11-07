@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, BufRead};
 
+use crate::describe::{DESCRIBE_VERSION, DescribeParams, VendorTable, describe};
 use crate::event::{Event, EventKind, TimeNs, is_label, reason_without_values};
 use crate::feed::{
     BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, SourceCoverage,
@@ -98,6 +99,8 @@ pub fn run<N: Normalize>(
 pub struct Live<N> {
     normalizer: N,
     rule: PersistenceRule,
+    describe: DescribeParams,
+    vendors: VendorTable,
     include_withheld: bool,
     started: bool,
     feed_lines: usize,
@@ -120,6 +123,8 @@ impl<N: Normalize> Live<N> {
         Self {
             normalizer,
             rule,
+            describe: DescribeParams::default(),
+            vendors: VendorTable::default(),
             include_withheld,
             started: false,
             feed_lines: 0,
@@ -133,6 +138,15 @@ impl<N: Normalize> Live<N> {
             torn: 0,
             slept_ns: 0,
         }
+    }
+
+    /// Describes with these parameters and this vendor registry instead of
+    /// the defaults and none.
+    #[must_use]
+    pub fn with_describe(mut self, params: DescribeParams, vendors: VendorTable) -> Self {
+        self.describe = params;
+        self.vendors = vendors;
+        self
     }
 
     /// Reads the feed's line `feed_line` (1-based); `terminated` is false for
@@ -278,8 +292,22 @@ impl<N: Normalize> Live<N> {
                     return reject(self, "judge time out of range");
                 }
                 self.judged += 1;
+                // The answer's time: its arrival through the clock, or, before
+                // any clock line, the latest event's.
+                let at_ns = self
+                    .utc(boot_ns, None, None)
+                    .or_else(|| self.events.iter().map(|e| e.t_ns).max())
+                    .unwrap_or(0);
                 vec![
                     VerdictLine::Coverage(self.coverage()),
+                    VerdictLine::Emitters {
+                        judge_line: feed_line,
+                        describe_version: DESCRIBE_VERSION,
+                        vendors: self.vendors.id().map(str::to_owned),
+                        recent_ns: self.describe.recent_ns,
+                        at_ns,
+                        picture: describe(&self.events, at_ns, &self.describe, &self.vendors),
+                    },
                     VerdictLine::Verdicts {
                         judge_line: feed_line,
                         boot_ns,

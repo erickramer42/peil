@@ -32,6 +32,8 @@ ADR-0004 runs the core as a process inside the Android app, fed raw lines over s
    - `coverage`: per source and receiver, the lines seen, rejected, withheld and dropped, and time asleep.
    - `end`, the last line: why the stream ended (input closed, interrupted) and the totals.
 
+   Amended 2026-11-07: an `emitters` line, the emitter picture at that moment (ADR-0006), comes before each `verdicts` line. Readers skip line types they don't know, so a new line type is an additive change.
+
 7. **Hostile input.** Every field of a feed line is checked: known `type`s only, a `seq` that rises, times in range, `receiver` as in the event schema, and a line at most 1 MiB long. A bad feed line is `rejected` and counted; a torn last line is dropped and counted; a first line that isn't `start` with a known `schema` is fatal, with exit code 2. A source's raw text is parsed only by that source's normalizer, and one bad raw line rejects only that line.
 
 8. **Normalizers and the first source.** Each source's normalizer lives in `sensio-sources` and turns a `raw` text into normalized events (`crates/sensio-core/src/event.rs`). A line with `source` `sensio` carries one normalized event as its raw text. It lets the live mode, its tests and the fake sources for the gates (synthetic drives fed through the feed) land before the Android and Kismet normalizers do.

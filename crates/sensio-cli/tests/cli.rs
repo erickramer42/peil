@@ -218,3 +218,55 @@ fn live_reports_a_missing_file() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("opening no-such-file.feed"));
 }
+
+#[test]
+fn describe_prints_the_recent_emitters_loud_first() {
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../sensio-core/tests/fixtures/drive_wifi.jsonl");
+    let output = peil(&["describe".as_ref(), fixture.as_os_str()], None);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let devices: Vec<String> = String::from_utf8(output.stdout)
+        .expect("UTF-8 output")
+        .lines()
+        .map(|line| {
+            let v: serde_json::Value = serde_json::from_str(line).expect("each line is JSON");
+            format!(
+                "{} {}",
+                v["device"].as_str().expect("a device"),
+                v["band"].as_str().expect("a band")
+            )
+        })
+        .collect();
+    assert_eq!(
+        devices,
+        [
+            "wifi:ee:ee:ee:00:00:01 strong",
+            "wifi:22:22:22:00:00:04 medium"
+        ]
+    );
+}
+
+#[test]
+fn live_reports_a_bad_vendor_registry_with_its_line() {
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("bad-vendors.csv");
+    std::fs::write(&path, "MA-L,XYZ,Example\n").expect("the test file is written");
+    let output = peil(
+        &[
+            "live".as_ref(),
+            "--vendors".as_ref(),
+            path.as_os_str(),
+            feed_fixture().as_os_str(),
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("line 1: not an MA-L, MA-M or MA-S assignment"),
+        "{stderr}"
+    );
+}

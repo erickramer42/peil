@@ -16,6 +16,9 @@ fn a_sensio_line_is_one_event() {
         [EventKind::BleAdvert {
             addr: "aa:aa:aa:00:00:01".to_owned(),
             rssi_dbm: Some(-60),
+            manufacturer_data: Vec::new(),
+            service_data: Vec::new(),
+            service_uuids: Vec::new(),
         }]
     );
 }

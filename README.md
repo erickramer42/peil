@@ -1,8 +1,8 @@
 # Peil
 
-Anomaly detection for the emitters and sensor context around a vehicle or a building: what is unusual in this place, or traveling with this vehicle, right now, and should you care?
+What's transmitting around a vehicle or a building, and is any of it unusual or staying with you? Peil describes every emitter nearby, the loud ones first, and judges them with versioned, deterministic rules.
 
-It takes what established sensors already see (Kismet for Wi-Fi and BLE, rtl_433 for sub-GHz devices such as tire-pressure sensors, gpsd for position), puts it on one clock, and judges it with versioned, deterministic rules. Every verdict carries the evidence behind it, and every recording can be replayed to give the same verdicts again.
+It takes what established sensors already see (Kismet for Wi-Fi and BLE, rtl_433 for sub-GHz devices such as tire-pressure sensors, gpsd for position) and puts it on one clock. Every verdict carries the evidence behind it, and every recording can be replayed to give the same verdicts again.
 
 *Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding.
 
@@ -13,10 +13,11 @@ An early scaffold. What works today:
 - The normalized event schema (BLE adverts, Wi-Fi access points and stations, TPMS transmissions, GNSS fixes, each with the receiver that saw it) as JSON lines, with input validation whose errors never repeat the input's values.
 - The judge with one rule, `persistence.places`: a device seen at several distinct places over a span of time. It's the first of a family of anomaly evidence ([ADR-0001](docs/adr/0001-scope-and-sensor-boundary.md)); its parameters are checked before it runs.
 - `peil judge <events.jsonl>`: one verdict per line, as JSON.
+- `peil describe <events.jsonl>`: the emitter picture, one description per line, loud first: each emitter's kind, signal band (strength, never distance), sightings per receiver, vendor block from a registry you supply (`--vendors`, the IEEE's MA-L, MA-M and MA-S lists), the tracker network its advert's format names (Apple Find My, Google's Find Hub network, DULT), and an access point's security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)). `peil live` writes the same picture as an `emitters` line before each answer's verdicts.
 - `peil live [feed]`: reads a live feed from a file or stdin and answers each request in it with the verdicts over the events before it ([ADR-0005](docs/adr/0005-live-feed-and-verdict-stream.md)). A saved feed replays to the same bytes. Its one source so far is `sensio`, a normalized event carried as a raw line.
 - Golden verdicts for a synthetic drive, as events and as a feed; property tests that verdicts don't depend on input order and that each live answer is the judge over the events before it.
 
-Not built yet: the Android app, the source adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
+Not built yet: hardware categories beyond trackers, the Android app, the source adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
 
 ## How it fits together
 
@@ -43,6 +44,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo run -p sensio-cli -- judge crates/sensio-core/tests/fixtures/drive.jsonl
 cargo run -p sensio-cli -- live crates/sensio-core/tests/fixtures/drive.feed
+cargo run -p sensio-cli -- describe crates/sensio-core/tests/fixtures/drive_wifi.jsonl
 cargo deny check     # licenses, bans, sources, advisories (from cargo install cargo-deny)
 ```
 
@@ -68,7 +70,7 @@ One JSON object per line. `t_ns` is nanoseconds since the Unix epoch (UTC) on th
 {"t_ns":1800000004000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-12.5}
 ```
 
-A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for.
+A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for. A BLE advert can carry its manufacturer data, service data and service UUIDs (hex, each entry at most 255 bytes), and an access point the security it announces (`{"protocol":"wpa2","enterprise":true}`); an advertised device name is never kept, since it is often a person's name ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).
 
 A line that can't be used is rejected with its line, its column and what's wrong (`line 3, column 110: invalid type: string (value left out), expected i16`), never with the value itself: those are other people's identifiers.
 

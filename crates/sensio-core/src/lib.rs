@@ -7,12 +7,14 @@
 //! (ADR-0001, ADR-0002). The live judge ([`live::Live`]) answers each request
 //! in a feed with the judge over the events before it (ADR-0005).
 
+pub mod describe;
 pub mod event;
 pub mod feed;
 pub mod geo;
 pub mod judge;
 pub mod live;
 
+pub use describe::{DESCRIBE_VERSION, DescribeParams, Picture, VendorTable, describe};
 pub use event::{DeviceId, Event, EventKind, ParseError, TimeNs, parse_jsonl};
 pub use judge::{PersistenceRule, Place, RULE_SET_VERSION, Verdict, judge};
 pub use live::{Fatal, Live, Normalize, RunError, run};

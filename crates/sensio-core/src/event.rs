@@ -35,12 +35,23 @@ pub struct Event {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EventKind {
-    /// A BLE advertisement.
+    /// A BLE advertisement. The advertised device name is never kept here
+    /// (it is often a person's name); it stays only in the raw line
+    /// (ADR-0006 section 6).
     BleAdvert {
         /// The advertiser's address as the source reported it.
         addr: String,
         /// Received signal strength, if the source gave one.
         rssi_dbm: Option<i16>,
+        /// The advert's manufacturer-specific data, in the advert's order.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        manufacturer_data: Vec<ManufacturerData>,
+        /// The advert's service data, in the advert's order.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        service_data: Vec<ServiceData>,
+        /// The service UUIDs the advert lists.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        service_uuids: Vec<String>,
     },
     /// A tire-pressure sensor's transmission.
     Tpms {
@@ -59,6 +70,9 @@ pub enum EventKind {
         freq_mhz: Option<u32>,
         /// Received signal strength, if the source gave one.
         rssi_dbm: Option<i16>,
+        /// The security it announces, if the source reported it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        security: Option<WifiSecurity>,
     },
     /// A Wi-Fi station sending frames, seen in monitor mode. Nothing it sent
     /// is kept beyond its address and the network it's on (ADR-0001 section 5).
@@ -79,6 +93,54 @@ pub enum EventKind {
         /// Longitude, degrees east.
         lon_deg: f64,
     },
+}
+
+/// One manufacturer-specific data entry of a BLE advert.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManufacturerData {
+    /// The Bluetooth SIG company identifier that opens the entry.
+    pub company_id: u16,
+    /// The bytes after the company identifier, as hex.
+    pub data: String,
+}
+
+/// One service data entry of a BLE advert.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServiceData {
+    /// The service's UUID: 4 or 8 hex digits for a 16- or 32-bit UUID, or
+    /// the 36-character form of a 128-bit one.
+    pub uuid: String,
+    /// The bytes after the UUID, as hex.
+    pub data: String,
+}
+
+/// The security an access point announces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WifiSecurity {
+    /// The strongest protocol it offers.
+    pub protocol: WifiProtocol,
+    /// Whether it authenticates through 802.1X (enterprise) rather than a
+    /// shared key.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub enterprise: bool,
+}
+
+/// A Wi-Fi security protocol.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WifiProtocol {
+    /// No security.
+    Open,
+    /// Opportunistic Wireless Encryption: encrypted, unauthenticated.
+    Owe,
+    /// WEP.
+    Wep,
+    /// WPA.
+    Wpa,
+    /// WPA2.
+    Wpa2,
+    /// WPA3.
+    Wpa3,
 }
 
 /// A device the judge tracks: one per transmitter identity a source reports.
@@ -239,6 +301,66 @@ fn is_wifi_freq(mhz: u32) -> bool {
     (2400..=2500).contains(&mhz) || (4900..=5900).contains(&mhz) || (5925..=7125).contains(&mhz)
 }
 
+/// The most entries of one kind (manufacturer data, service data, service
+/// UUIDs) an advert carries: an extended advert holds 254 bytes, and every
+/// entry takes at least a few.
+pub const MAX_ADVERT_ENTRIES: usize = 32;
+
+/// The most bytes one advert entry's data holds (ADR-0006 section 6).
+pub const MAX_ADVERT_DATA_BYTES: usize = 255;
+
+/// Whether `s` is hex for at most `max_bytes` bytes, either case.
+fn is_hex_bytes(s: &str, max_bytes: usize) -> bool {
+    s.len() % 2 == 0 && s.len() <= 2 * max_bytes && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// Whether `s` is a Bluetooth UUID: 4 or 8 hex digits, or the 36-character
+/// form of a 128-bit UUID (`8-4-4-4-12` hex digits), either case.
+fn is_uuid(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    match bytes.len() {
+        4 | 8 => bytes.iter().all(u8::is_ascii_hexdigit),
+        36 => bytes.iter().enumerate().all(|(i, &b)| {
+            if [8, 13, 18, 23].contains(&i) {
+                b == b'-'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        }),
+        _ => false,
+    }
+}
+
+/// The checks a BLE advert's optional contents share.
+fn validate_advert(
+    manufacturer_data: &[ManufacturerData],
+    service_data: &[ServiceData],
+    service_uuids: &[String],
+) -> Result<(), &'static str> {
+    if manufacturer_data.len() > MAX_ADVERT_ENTRIES
+        || service_data.len() > MAX_ADVERT_ENTRIES
+        || service_uuids.len() > MAX_ADVERT_ENTRIES
+    {
+        return Err("more than 32 BLE advert entries of one kind");
+    }
+    if manufacturer_data
+        .iter()
+        .any(|m| !is_hex_bytes(&m.data, MAX_ADVERT_DATA_BYTES))
+    {
+        return Err("BLE manufacturer data isn't hex of at most 255 bytes");
+    }
+    if service_data
+        .iter()
+        .any(|d| !is_uuid(&d.uuid) || !is_hex_bytes(&d.data, MAX_ADVERT_DATA_BYTES))
+    {
+        return Err("BLE service data isn't a UUID with hex of at most 255 bytes");
+    }
+    if service_uuids.iter().any(|u| !is_uuid(u)) {
+        return Err("BLE service UUID isn't 4 or 8 hex digits or a 128-bit UUID");
+    }
+    Ok(())
+}
+
 /// A received signal strength a receiver can plausibly report, in dBm.
 const RSSI_DBM: std::ops::RangeInclusive<i16> = -127..=20;
 
@@ -285,10 +407,20 @@ fn validate(event: &Event) -> Result<(), &'static str> {
                 return Err("longitude out of range");
             }
         }
-        EventKind::BleAdvert { addr, .. } => {
+        EventKind::BleAdvert {
+            addr,
+            rssi_dbm,
+            manufacturer_data,
+            service_data,
+            service_uuids,
+        } => {
             if !is_mac(addr) {
                 return Err("BLE address isn't of the form xx:xx:xx:xx:xx:xx");
             }
+            if rssi_dbm.is_some_and(|r| !RSSI_DBM.contains(&r)) {
+                return Err("BLE RSSI out of range");
+            }
+            validate_advert(manufacturer_data, service_data, service_uuids)?;
         }
         EventKind::Tpms {
             sensor_id,
@@ -306,6 +438,7 @@ fn validate(event: &Event) -> Result<(), &'static str> {
             ssid,
             freq_mhz,
             rssi_dbm,
+            security: _,
         } => {
             if !is_mac(bssid) {
                 return Err("Wi-Fi BSSID isn't an address of the form xx:xx:xx:xx:xx:xx");

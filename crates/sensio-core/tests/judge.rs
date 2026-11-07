@@ -313,3 +313,58 @@ fn a_rule_rejects_negative_durations() {
     };
     assert_eq!(age.validate(), Err("max_fix_age_ns must not be negative"));
 }
+
+#[test]
+fn advert_contents_and_security_parse_and_bad_ones_are_rejected() {
+    let advert = |fields: &str| {
+        format!(
+            r#"{{"t_ns":1,"source":"android","kind":"ble_advert","addr":"aa:aa:aa:00:00:01",{fields}}}"#
+        )
+    };
+    assert!(accepted(&advert(
+        r#""rssi_dbm":-60,"manufacturer_data":[{"company_id":76,"data":"12190010"}],"service_data":[{"uuid":"FEAA","data":"40"}],"service_uuids":["feed","0000feaa-0000-1000-8000-00805f9b34fb"]"#
+    )));
+    assert!(accepted(&wifi_ap(
+        r#""bssid":"ee:ee:ee:00:00:01","security":{"protocol":"wpa2","enterprise":true}"#
+    )));
+    let too_many = format!(r#""service_uuids":[{}]"#, vec![r#""feed""#; 33].join(","));
+    for (fields, reason) in [
+        (
+            r#""manufacturer_data":[{"company_id":76,"data":"zz"}]"#.to_owned(),
+            "BLE manufacturer data isn't hex of at most 255 bytes",
+        ),
+        (
+            r#""manufacturer_data":[{"company_id":76,"data":"123"}]"#.to_owned(),
+            "BLE manufacturer data isn't hex of at most 255 bytes",
+        ),
+        (
+            format!(
+                r#""manufacturer_data":[{{"company_id":76,"data":"{}"}}]"#,
+                "ab".repeat(256)
+            ),
+            "BLE manufacturer data isn't hex of at most 255 bytes",
+        ),
+        (
+            r#""service_data":[{"uuid":"fea","data":""}]"#.to_owned(),
+            "BLE service data isn't a UUID with hex of at most 255 bytes",
+        ),
+        (
+            r#""service_uuids":["0000feaa_0000-1000-8000-00805f9b34fb"]"#.to_owned(),
+            "BLE service UUID isn't 4 or 8 hex digits or a 128-bit UUID",
+        ),
+        (too_many, "more than 32 BLE advert entries of one kind"),
+        (r#""rssi_dbm":21"#.to_owned(), "BLE RSSI out of range"),
+    ] {
+        assert_eq!(
+            rejection(&advert(&fields)),
+            format!("line 1: {reason}"),
+            "{fields}"
+        );
+    }
+    let unknown = wifi_ap(r#""bssid":"ee:ee:ee:00:00:01","security":{"protocol":"wpa9"}"#);
+    assert!(
+        rejection(&unknown).contains("(value left out)"),
+        "{}",
+        rejection(&unknown)
+    );
+}

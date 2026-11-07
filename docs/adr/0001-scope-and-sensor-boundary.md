@@ -15,6 +15,8 @@ What none of them answers is the question Peil exists for: what is unusual in th
 - verdicts that are deterministic and explain themselves,
 - context: for a vehicle, whether it's moving or parked and its ignition; for a building, a baseline of what normally belongs there,
 - and a display fit for a car or a walk through a building.
+
+Amended 2026-11-07: the question is two, the first leading: what is transmitting near me right now, and is any of it unusual or staying with me, and should I care? Descriptions answer the first (ADR-0006): every emitter nearby, the loud ones first, named by lookup and measurement. The judge's verdicts answer the second.
 ## Decision
 
 1. **Peil captures nothing itself.** Kismet, rtl_433 and gpsd are the sensor tier. Peil reads their output as a separate process: HTTP and websockets for Kismet, a pipe for rtl_433, a TCP socket for gpsd.
@@ -24,6 +26,8 @@ What none of them answers is the question Peil exists for: what is unusual in th
 3. **Peil's own parts** are the source adapters, recordings and replay, address-rotation linking, fusion, the judge, and its front ends: the CLI first, then a HUD.
 
    Amended 2026-11-06: the first HUD is the Android app (ADR-0004), which runs the same core as the CLI.
+
+   Amended 2026-11-07: and the describe layer, which turns events into one description per emitter beside the judge (ADR-0006).
 4. **The judge is deterministic.** Detectors produce evidence, never verdicts. The judge is a pure function of a session's events and a versioned rule set (`RULE_SET_VERSION`), and each verdict lists the evidence that produced it. No learned model or language model sits in the verdict path.
 5. **Peil is defensive.** It doesn't decode the contents of anyone's communications. It may transmit where that helps answer the question, for example an active BLE scan or querying a vehicle's own ECUs over the OBD port, but only through certified hardware used within its certification. It never transmits to interfere with, disrupt or impersonate other devices: no jamming, no deauthentication, no spoofing, and no transmitting from a general-purpose SDR outside a license the user holds.
 6. **Peil is written in Rust.** Because the sensor tier does the capture, the language is chosen for Peil's own work, not for driver or DSP libraries:

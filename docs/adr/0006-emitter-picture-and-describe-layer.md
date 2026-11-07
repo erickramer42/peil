@@ -1,6 +1,6 @@
 # ADR-0006: The emitter picture and the describe layer
 
-Status: Proposed.
+Status: Accepted. Built: the event schema's new fields, the describe step with three tracker formats (Apple Find My, Google's Find Hub network, DULT), the `emitters` line, the vendor registry import (`--vendors`), and `peil describe`. Not yet built: hardware categories beyond trackers, Samsung's and Tile's tracker formats, and the normalizers that fill the new fields from real sources.
 
 ## Context
 
@@ -28,7 +28,7 @@ The event schema can't carry the picture yet. A BLE advert keeps only its addres
 
 3. **Deterministic and versioned like the judge.** The describe step is a pure function of the events, its parameters and its tables: no clock reads, randomness, hash-map iteration order or I/O. Its parameters (the strength bands, the recent window, the movement thresholds) come in as a struct with checked defaults, like `PersistenceRule`. Its tables in code (advert formats, hardware categories) carry `DESCRIBE_VERSION`, which follows `RULE_SET_VERSION`'s rules (it stays 1 until the first release, then bumps with any change to a table or a default). The vendor registry is data, not code (section 5), named by a hash of its contents. Every description set names both, so a replay with the same versions describes the same way, and a replay with newer tables shows its differences as differences.
 
-4. **Hardware, never operator.** A hardware category names a class of equipment: cellular or fleet router, camera-class device, body-camera-class device, tracker, infrastructure, consumer, unknown. It never names who operates it, whom it belongs to, or what it's for. A cellular router's vendor block rides in buses, ambulances, utility trucks and retail vans as well as patrol cars; the evidence names the router, and that's all it can carry. Each table entry cites its public source (a vendor's documentation, the Bluetooth SIG's assigned numbers) with the date it was read. Whether a category may raise an alert is the judge's business (severity, a later ADR), not the describe layer's.
+4. **Hardware categories come from a table.** The table matches vendor blocks, BLE company IDs and advert formats to categories (cellular or fleet router, camera-class device, body-camera-class device, tracker, infrastructure, consumer, unknown, and more as entries are added). Each entry cites its public source (a vendor's documentation, the Bluetooth SIG's assigned numbers) with the date it was read, and a description names the entry that matched, so its category carries its evidence like any verdict. Whether a category may raise an alert is the judge's business (severity, a later ADR), not the describe layer's.
 
 5. **The vendor registry is supplied, not bundled.** The core reads no registry of its own: `peil live --vendors <file>` and the app's settings import the IEEE's published MA-L, MA-M and MA-S lists, and the front end parses them (bounded, hostile-input rules, like any file) into a table it passes to the core. Without one, every vendor reads "no registry" and coverage says so. Bundling the registry waits until the IEEE's terms for redistributing it are checked. The app fetches nothing: the user downloads the lists and imports them (ADR-0004 section 8: no network libraries).
 

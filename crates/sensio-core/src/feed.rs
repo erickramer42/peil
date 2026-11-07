@@ -11,6 +11,7 @@ use std::io::{self, BufRead};
 
 use serde::{Deserialize, Serialize};
 
+use crate::describe::Picture;
 use crate::event::TimeNs;
 use crate::judge::Verdict;
 
@@ -156,6 +157,23 @@ pub enum VerdictLine {
         core: &'static str,
         /// The rule set the verdicts come from.
         rule_set_version: u32,
+    },
+    /// The emitter picture at one `judge` line, before its verdicts (ADR-0006).
+    Emitters {
+        /// The `judge` line's 1-based line number in the feed.
+        judge_line: usize,
+        /// The describe layer's version.
+        describe_version: u32,
+        /// The vendor registry's identity, if one was given.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        vendors: Option<String>,
+        /// The recent window, nanoseconds back from the answer's time.
+        recent_ns: TimeNs,
+        /// The answer's time: the `judge` line's arrival as UTC.
+        at_ns: TimeNs,
+        /// The picture.
+        #[serde(flatten)]
+        picture: Picture,
     },
     /// The answer to one `judge` line: every verdict over the events before it.
     Verdicts {

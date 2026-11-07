@@ -6,6 +6,7 @@
 //! differ, with a raw escape hatch for any value at all.
 
 use arbitrary::Arbitrary;
+use sensio_core::event::{ManufacturerData, ServiceData, WifiProtocol, WifiSecurity};
 use sensio_core::{EventKind, PersistenceRule, TimeNs};
 
 const NS_PER_S: i64 = 1_000_000_000;
@@ -75,17 +76,137 @@ impl Addr {
     }
 }
 
+/// Bytes as hex, or any text in their place.
+#[derive(Arbitrary, Debug, Clone)]
+pub enum Hex {
+    /// Bytes, written as hex.
+    Bytes(Vec<u8>),
+    /// Any text.
+    Raw(String),
+}
+
+impl Hex {
+    fn text(&self) -> String {
+        match self {
+            Self::Bytes(bytes) => bytes.iter().map(|b| format!("{b:02x}")).collect(),
+            Self::Raw(s) => s.clone(),
+        }
+    }
+}
+
+/// A Bluetooth UUID: 16-bit, 128-bit, or any text.
+#[derive(Arbitrary, Debug, Clone)]
+pub enum Uuid {
+    /// A 16-bit UUID.
+    Short(u16),
+    /// A 128-bit UUID.
+    Long(u128),
+    /// Any text.
+    Raw(String),
+}
+
+impl Uuid {
+    fn text(&self) -> String {
+        match self {
+            Self::Short(n) => format!("{n:04x}"),
+            Self::Long(n) => {
+                let h = format!("{n:032x}");
+                format!(
+                    "{}-{}-{}-{}-{}",
+                    &h[..8],
+                    &h[8..12],
+                    &h[12..16],
+                    &h[16..20],
+                    &h[20..]
+                )
+            }
+            Self::Raw(s) => s.clone(),
+        }
+    }
+}
+
+/// A BLE advert's contents: company IDs mostly from a few that name
+/// tracker networks, so the describe step's formats get exercised.
+#[derive(Arbitrary, Debug, Clone, Default)]
+pub struct Advert {
+    /// Manufacturer data: a company (an index into a pool, or any ID) and its bytes.
+    pub manufacturer: Vec<(Result<u8, u16>, Hex)>,
+    /// Service data.
+    pub service_data: Vec<(Uuid, Hex)>,
+    /// Listed service UUIDs.
+    pub uuids: Vec<Uuid>,
+}
+
+/// Company IDs the pool draws from: Apple, Samsung, Google, and one other.
+const COMPANIES: [u16; 4] = [0x004c, 0x0075, 0x00e0, 0x0059];
+
+impl Advert {
+    fn parts(&self) -> (Vec<ManufacturerData>, Vec<ServiceData>, Vec<String>) {
+        let manufacturer = self
+            .manufacturer
+            .iter()
+            .map(|(company, data)| ManufacturerData {
+                company_id: match company {
+                    Ok(i) => COMPANIES[usize::from(*i) % COMPANIES.len()],
+                    Err(id) => *id,
+                },
+                data: data.text(),
+            })
+            .collect();
+        let service_data = self
+            .service_data
+            .iter()
+            .map(|(uuid, data)| ServiceData {
+                uuid: uuid.text(),
+                data: data.text(),
+            })
+            .collect();
+        (
+            manufacturer,
+            service_data,
+            self.uuids.iter().map(Uuid::text).collect(),
+        )
+    }
+}
+
+/// An access point's security, as an index into the protocols and a flag.
+#[derive(Arbitrary, Debug, Clone, Copy)]
+pub struct Security(u8, bool);
+
+impl Security {
+    fn security(self) -> WifiSecurity {
+        const PROTOCOLS: [WifiProtocol; 6] = [
+            WifiProtocol::Open,
+            WifiProtocol::Owe,
+            WifiProtocol::Wep,
+            WifiProtocol::Wpa,
+            WifiProtocol::Wpa2,
+            WifiProtocol::Wpa3,
+        ];
+        WifiSecurity {
+            protocol: PROTOCOLS[usize::from(self.0) % PROTOCOLS.len()],
+            enterprise: self.1,
+        }
+    }
+}
+
 /// An event kind, mostly well formed.
 #[derive(Arbitrary, Debug, Clone)]
 pub enum Kind {
     /// A GNSS fix.
     Fix(Coord),
     /// A BLE advert.
-    Ble(Addr, Option<i16>),
+    Ble(Addr, Option<i16>, Advert),
     /// A TPMS transmission; the ID is one of a few, or any text.
     Tpms(Result<u8, String>, Option<f32>),
     /// A Wi-Fi access point.
-    Ap(Addr, Option<String>, Option<u32>, Option<i16>),
+    Ap(
+        Addr,
+        Option<String>,
+        Option<u32>,
+        Option<i16>,
+        Option<Security>,
+    ),
     /// A Wi-Fi station.
     Client(Addr, Option<Addr>, Option<u32>, Option<i16>),
 }
@@ -99,10 +220,16 @@ impl Kind {
                 let (lat_deg, lon_deg) = coord.lat_lon();
                 EventKind::GnssFix { lat_deg, lon_deg }
             }
-            Self::Ble(addr, rssi_dbm) => EventKind::BleAdvert {
-                addr: addr.text(),
-                rssi_dbm: *rssi_dbm,
-            },
+            Self::Ble(addr, rssi_dbm, advert) => {
+                let (manufacturer_data, service_data, service_uuids) = advert.parts();
+                EventKind::BleAdvert {
+                    addr: addr.text(),
+                    rssi_dbm: *rssi_dbm,
+                    manufacturer_data,
+                    service_data,
+                    service_uuids,
+                }
+            }
             Self::Tpms(id, rssi_dbm) => EventKind::Tpms {
                 sensor_id: match id {
                     Ok(n) => format!("0a1b2c{:02x}", n % 4),
@@ -110,11 +237,12 @@ impl Kind {
                 },
                 rssi_dbm: *rssi_dbm,
             },
-            Self::Ap(bssid, ssid, freq_mhz, rssi_dbm) => EventKind::WifiAp {
+            Self::Ap(bssid, ssid, freq_mhz, rssi_dbm, security) => EventKind::WifiAp {
                 bssid: bssid.text(),
                 ssid: ssid.clone(),
                 freq_mhz: *freq_mhz,
                 rssi_dbm: *rssi_dbm,
+                security: security.map(Security::security),
             },
             Self::Client(addr, bssid, freq_mhz, rssi_dbm) => EventKind::WifiClient {
                 addr: addr.text(),

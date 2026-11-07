@@ -1,17 +1,23 @@
 //! `peil`: Peil's command-line front end.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
 use sensio_core::feed::VerdictLine;
-use sensio_core::{Live, PersistenceRule, RunError, judge, parse_jsonl, run};
+use sensio_core::{
+    DescribeParams, Live, PersistenceRule, RunError, VendorTable, describe, judge, parse_jsonl, run,
+};
 use sensio_sources::Sources;
 
 const NS_PER_S: i64 = 1_000_000_000;
+
+/// The largest vendor registry file read; the IEEE's lists together are a
+/// few megabytes.
+const MAX_VENDORS_BYTES: u64 = 64 << 20;
 
 /// The exit code for input that isn't a feed at all.
 const EXIT_NOT_A_FEED: u8 = 2;
@@ -20,7 +26,7 @@ const EXIT_NOT_A_FEED: u8 = 2;
 #[command(
     name = "peil",
     version,
-    about = "Anomaly detection for the emitters around a vehicle or a building"
+    about = "What is transmitting around a vehicle or a building, and is any of it unusual"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -44,9 +50,38 @@ enum Command {
         /// Judge the lines the core didn't get live, too.
         #[arg(long)]
         all: bool,
+        /// The IEEE's MA-L, MA-M and MA-S lists (CSV, one or several
+        /// concatenated), for vendor names.
+        #[arg(long)]
+        vendors: Option<PathBuf>,
         #[command(flatten)]
         rule: RuleArgs,
     },
+    /// Describe the emitters in a file of normalized events (JSONL), loud
+    /// first, one per line, as of the last event.
+    Describe {
+        /// The events file.
+        path: PathBuf,
+        /// The IEEE's MA-L, MA-M and MA-S lists (CSV), for vendor names.
+        #[arg(long)]
+        vendors: Option<PathBuf>,
+    },
+}
+
+/// Reads the vendor registry, or none.
+fn vendor_table(path: Option<&PathBuf>) -> Result<VendorTable> {
+    let Some(path) = path else {
+        return Ok(VendorTable::default());
+    };
+    let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.take(MAX_VENDORS_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .with_context(|| format!("reading {}", path.display()))?;
+    if bytes.len() as u64 > MAX_VENDORS_BYTES {
+        return Err(anyhow!("{}: longer than 64 MiB", path.display()));
+    }
+    VendorTable::parse(&bytes).with_context(|| format!("reading {}", path.display()))
 }
 
 #[derive(Args)]
@@ -110,8 +145,37 @@ fn run_command(command: Command) -> Result<ExitCode> {
             }
             Ok(ExitCode::SUCCESS)
         }
-        Command::Live { path, all, rule } => {
+        Command::Describe { path, vendors } => {
+            let vendors = vendor_table(vendors.as_ref())?;
+            let file = File::open(&path).with_context(|| format!("opening {}", path.display()))?;
+            let events = parse_jsonl(BufReader::new(file))
+                .with_context(|| format!("reading {}", path.display()))?;
+            let at_ns = events.iter().map(|e| e.t_ns).max().unwrap_or(0);
+            let picture = describe(&events, at_ns, &DescribeParams::default(), &vendors);
+            let mut out = std::io::stdout().lock();
+            for emitter in &picture.emitters {
+                serde_json::to_writer(&mut out, emitter)?;
+                writeln!(out)?;
+            }
+            eprintln!(
+                "{} emitters in the last {} s, {} older; movement: {}",
+                picture.emitters.len(),
+                DescribeParams::default().recent_ns / NS_PER_S,
+                picture.older,
+                serde_json::to_value(picture.movement)?
+                    .as_str()
+                    .unwrap_or("unknown"),
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Live {
+            path,
+            all,
+            vendors,
+            rule,
+        } => {
             let rule = rule.rule()?;
+            let vendors = vendor_table(vendors.as_ref())?;
             let (reader, name): (Box<dyn BufRead>, String) = match &path {
                 Some(path) => {
                     let file =
@@ -120,12 +184,18 @@ fn run_command(command: Command) -> Result<ExitCode> {
                 }
                 None => (Box::new(std::io::stdin().lock()), "stdin".to_owned()),
             };
-            live(reader, &name, rule, all)
+            live(reader, &name, rule, all, vendors)
         }
     }
 }
 
-fn live(reader: impl BufRead, name: &str, rule: PersistenceRule, all: bool) -> Result<ExitCode> {
+fn live(
+    reader: impl BufRead,
+    name: &str,
+    rule: PersistenceRule,
+    all: bool,
+    vendors: VendorTable,
+) -> Result<ExitCode> {
     let mut out = std::io::stdout().lock();
     let emit = |line: &VerdictLine| -> std::io::Result<()> {
         serde_json::to_writer(&mut out, line)?;
@@ -137,7 +207,8 @@ fn live(reader: impl BufRead, name: &str, rule: PersistenceRule, all: bool) -> R
         }
         Ok(())
     };
-    match run(Live::new(Sources, rule, all), reader, emit) {
+    let engine = Live::new(Sources, rule, all).with_describe(DescribeParams::default(), vendors);
+    match run(engine, reader, emit) {
         Ok(()) => Ok(ExitCode::SUCCESS),
         Err(RunError::Fatal(fatal)) => {
             eprintln!("Error: {name}: {fatal}");
