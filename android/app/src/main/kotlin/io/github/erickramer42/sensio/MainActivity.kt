@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private lateinit var retention: Button
     private lateinit var deleteAll: Button
     private lateinit var mine: Button
+    private lateinit var classic: Button
     private val refresh: () -> Unit = { show() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,10 +46,16 @@ class MainActivity : Activity() {
         retention = button("") { cycleRetention() }
         deleteAll = button("Delete all") { confirmDeleteAll() }
         mine = button("Mine") { chooseMine() }
+        classic = button("") { toggleClassic() }
 
-        val buttons = LinearLayout(this).apply {
+        fun row(vararg views: View) = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf(startStop, mine, retention, deleteAll).forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
+            views.forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
+        }
+        val buttons = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(row(startStop, mine, classic))
+            addView(row(retention, deleteAll))
         }
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -106,6 +113,7 @@ class MainActivity : Activity() {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         startStop.text = if (running) "Stop" else "Start"
         retention.text = "Keep ${Recordings.retentionDays(this)} d"
+        classic.text = if (Options.classic(this)) "Classic: on" else "Classic: off"
         deleteAll.isEnabled = !running
 
         val enrolled = Enrolled.devices(this)
@@ -161,7 +169,30 @@ class MainActivity : Activity() {
         stopService(Intent(this, SessionService::class.java))
     }
 
+    /**
+     * Bluetooth Classic discovery, off by default. Turning it on asks for
+     * BLUETOOTH_CONNECT, which telling a Classic device from a BLE one needs.
+     */
+    private fun toggleClassic() {
+        if (Options.classic(this)) {
+            Options.setClassic(this, false)
+        } else if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+            Options.setClassic(this, true)
+        } else {
+            requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_CONNECT), CLASSIC_REQUEST)
+            return
+        }
+        show()
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode == CLASSIC_REQUEST) {
+            val granted = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            Options.setClassic(this, granted)
+            if (!granted) status.text = "Bluetooth Classic discovery needs the nearby devices permission to connect."
+            show()
+            return
+        }
         val needed = PERMISSIONS - Manifest.permission.POST_NOTIFICATIONS
         val refused = needed.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (refused.isEmpty()) {
@@ -223,6 +254,7 @@ class MainActivity : Activity() {
 
     companion object {
         const val LIST_LENGTH = 40
+        private const val CLASSIC_REQUEST = 2
 
         val PERMISSIONS = listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -232,7 +264,7 @@ class MainActivity : Activity() {
             Manifest.permission.POST_NOTIFICATIONS,
         )
 
-        private val KINDS = mapOf("ble" to "BLE", "access_point" to "AP", "station" to "STA", "tpms" to "TPMS")
+        private val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA", "tpms" to "TPMS")
 
         private val TRACKERS = mapOf(
             "apple_find_my" to "Find My",

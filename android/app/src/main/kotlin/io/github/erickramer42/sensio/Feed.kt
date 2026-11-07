@@ -58,6 +58,14 @@ object Feed {
     fun bleRaw(addr: String, rssi: Int, record: ByteArray?, timestampNs: Long): String =
         """{"t":"ble","addr":${quote(addr)},"rssi":$rssi,"record":"${hex(record ?: ByteArray(0))}","ts_ns":$timestampNs}"""
 
+    /** One Bluetooth Classic device found by discovery; [deviceClass] is `BluetoothClass.getDeviceClass`. */
+    fun btRaw(addr: String, rssi: Int?, deviceClass: Int?): String = buildString {
+        append("""{"t":"bt","addr":""").append(quote(addr))
+        rssi?.let { append(""","rssi":""").append(it) }
+        deviceClass?.let { append(""","class":""").append(it) }
+        append('}')
+    }
+
     /** One location fix; the fields after `lon` stay in the raw line. */
     fun locRaw(lat: Double, lon: Double, provider: String?, accuracyM: Float?, speedMps: Float?, bearingDeg: Float?): String =
         buildString {

@@ -8,6 +8,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo="$(cd "$here/.." && pwd)"
 sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
 [ -n "$sdk" ] || { echo "set ANDROID_SDK_ROOT to the Android SDK" >&2; exit 1; }
+# On Windows, a path cargo hands to the linker must be a Windows path.
+if command -v cygpath >/dev/null; then sdk="$(cygpath -m "$sdk")"; fi
 ndk="$(ls -d "$sdk"/ndk/*/ | sort -V | tail -1)"
 api=31
 case "$(uname -s)" in

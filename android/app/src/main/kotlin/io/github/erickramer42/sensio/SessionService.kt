@@ -1,11 +1,14 @@
 package io.github.erickramer42.sensio
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothClass
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -15,6 +18,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.Location
 import android.location.LocationListener
@@ -74,6 +78,36 @@ class SessionService : Service() {
 
     private val locationListener = LocationListener { location -> fix(location) }
 
+    private val classicReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            // An error here must never take the session down with it.
+            runCatching { found(intent) }.onFailure { Live.status("Bluetooth Classic discovery failed: ${it.javaClass.simpleName}") }
+        }
+
+        private fun found(intent: Intent) {
+            if (intent.action != BluetoothDevice.ACTION_FOUND) return
+            val device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java) ?: return
+            // A BLE-only device is the BLE scan's; discovery reports it too.
+            // Reading the type needs BLUETOOTH_CONNECT.
+            if (device.type == BluetoothDevice.DEVICE_TYPE_LE) return
+            val rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE).toInt().takeIf { it != Short.MIN_VALUE.toInt() }
+            val deviceClass = intent.getParcelableExtra(BluetoothDevice.EXTRA_CLASS, BluetoothClass::class.java)?.deviceClass
+            data(Feed.btRaw(device.address, rssi, deviceClass))
+        }
+    }
+
+    /** Bluetooth Classic discovery, when the user has turned it on; each round takes about 12 s. */
+    private val classicScan = object : Runnable {
+        override fun run() {
+            val adapter = getSystemService(BluetoothManager::class.java).adapter
+            val allowed = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+            if (Options.classic(this@SessionService) && allowed && adapter != null && !adapter.isDiscovering) {
+                runCatching { adapter.startDiscovery() }
+            }
+            handler.postDelayed(this, CLASSIC_EVERY_MS)
+        }
+    }
+
     private val tick = object : Runnable {
         override fun run() {
             val slept = SystemClock.elapsedRealtime() - SystemClock.uptimeMillis()
@@ -127,6 +161,8 @@ class SessionService : Service() {
             handler,
         )
         startBle(filtered = !getSystemService(PowerManager::class.java).isInteractive)
+        registerReceiver(classicReceiver, IntentFilter(BluetoothDevice.ACTION_FOUND), null, handler)
+        handler.post(classicScan)
         handler.post(wifiScan)
         getSystemService(LocationManager::class.java)
             .requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, locationListener, worker.looper)
@@ -309,6 +345,8 @@ class SessionService : Service() {
             runCatching { getSystemService(BluetoothManager::class.java).adapter?.bluetoothLeScanner?.stopScan(bleCallback) }
             runCatching { unregisterReceiver(wifiReceiver) }
             runCatching { unregisterReceiver(screenReceiver) }
+            runCatching { unregisterReceiver(classicReceiver) }
+            runCatching { getSystemService(BluetoothManager::class.java).adapter?.cancelDiscovery() }
             runCatching { getSystemService(LocationManager::class.java).removeUpdates(locationListener) }
             synchronized(this) {
                 core?.close()
@@ -325,6 +363,7 @@ class SessionService : Service() {
     companion object {
         const val JUDGE_EVERY_MS = 3_000L
         const val WIFI_EVERY_MS = 10_000L
+        const val CLASSIC_EVERY_MS = 30_000L
         const val CLOCK_EVERY_MS = 60_000L
         const val RESTART_MAX_MS = 60_000L
 

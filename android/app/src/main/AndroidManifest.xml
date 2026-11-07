@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- No neverForLocation: with it, Android filters beacons out. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- Asked for only when the user turns Bluetooth Classic discovery on. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
     <!-- Reading scan results and asking for a scan. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

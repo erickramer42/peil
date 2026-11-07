@@ -60,16 +60,19 @@ class RingView(context: Context) : View(context) {
         val cy = height / 2f
         val r = min(cx, cy) - 8 * density
 
-        for (sector in SECTORS) {
-            val a = Math.toRadians(sector.from.toDouble())
-            canvas.drawLine(cx, cy, cx + r * cos(a).toFloat(), cy + r * sin(a).toFloat(), sectorPaint)
+        val sectors = sectors(picture?.emitters.orEmpty().mapTo(HashSet()) { it.kind })
+        if (sectors.size > 1) {
+            for (sector in sectors) {
+                val a = Math.toRadians(sector.from.toDouble())
+                canvas.drawLine(cx, cy, cx + r * cos(a).toFloat(), cy + r * sin(a).toFloat(), sectorPaint)
+            }
         }
         for ((band, outer) in BANDS) {
             canvas.drawCircle(cx, cy, outer * r, if (band == "unknown") unknownRingPaint else ringPaint)
         }
-        for ((kind, from, span) in SECTORS) {
+        for ((kind, from, span) in sectors) {
             val a = Math.toRadians((from + span / 2).toDouble())
-            val text = KIND_LABELS.getValue(kind)
+            val text = KIND_LABELS[kind] ?: kind
             val tx = cx + 0.9f * r * cos(a).toFloat() - label.measureText(text) / 2
             val ty = cy + 0.9f * r * sin(a).toFloat()
             canvas.drawText(text, tx, ty, label)
@@ -86,7 +89,7 @@ class RingView(context: Context) : View(context) {
 
         val emitters = picture?.emitters ?: return
         for (e in emitters) {
-            val (from, span) = SECTORS.firstOrNull { it.kind == e.kind }?.let { it.from to it.span } ?: continue
+            val (from, span) = sectors.firstOrNull { it.kind == e.kind }?.let { it.from to it.span } ?: continue
             val bandIndex = BANDS.indexOfFirst { it.first == e.band }.takeIf { it >= 0 } ?: (BANDS.size - 1)
             val inner = if (bandIndex == 0) 0.08f else BANDS[bandIndex - 1].second
             val outer = BANDS[bandIndex].second
@@ -106,24 +109,46 @@ class RingView(context: Context) : View(context) {
 
     private data class Sector(val kind: String, val from: Float, val span: Float)
 
+    /**
+     * A slice for each kind with something in it, none for the others, sized
+     * by [WEIGHTS] and laid clockwise from west in [WEIGHTS]' order.
+     */
+    private fun sectors(present: Set<String>): List<Sector> {
+        val kinds = WEIGHTS.filter { it.first in present }
+        val total = kinds.sumOf { it.second.toDouble() }.toFloat()
+        var from = 180f
+        return kinds.map { (kind, weight) ->
+            val span = 360f * weight / total
+            Sector(kind, from, span).also { from = (from + span) % 360f }
+        }
+    }
+
     companion object {
         /** Each band's outer edge, as a fraction of the radius, strongest first. */
         private val BANDS = listOf("strong" to 0.32f, "medium" to 0.56f, "weak" to 0.8f, "unknown" to 1f)
 
-        /** Degrees clockwise from east: BLE across the top, access points lower right, stations and TPMS lower left. */
-        private val SECTORS = listOf(
-            Sector("ble", 180f, 180f),
-            Sector("access_point", 0f, 110f),
-            Sector("station", 110f, 40f),
-            Sector("tpms", 150f, 30f),
+        /** Each kind's share of the circle when all are present; BLE first, across the top. */
+        private val WEIGHTS = listOf(
+            "ble" to 180f,
+            "bt_classic" to 40f,
+            "access_point" to 110f,
+            "station" to 40f,
+            "tpms" to 30f,
         )
 
         private val BAND_LABELS = mapOf("strong" to ">= -60", "medium" to "-60..-80", "weak" to "< -80", "unknown" to "no dBm")
 
-        private val KIND_LABELS =mapOf("ble" to "BLE", "access_point" to "Wi-Fi AP", "station" to "Station", "tpms" to "TPMS")
+        private val KIND_LABELS = mapOf(
+            "ble" to "BLE",
+            "bt_classic" to "BT Classic",
+            "access_point" to "Wi-Fi AP",
+            "station" to "Station",
+            "tpms" to "TPMS",
+        )
 
         private val KIND_COLORS = mapOf(
             "ble" to Color.rgb(80, 200, 120),
+            "bt_classic" to Color.rgb(180, 130, 255),
             "access_point" to Color.rgb(90, 160, 255),
             "station" to Color.rgb(80, 220, 230),
             "tpms" to Color.rgb(240, 180, 60),

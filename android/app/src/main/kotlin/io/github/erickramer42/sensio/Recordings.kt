@@ -43,6 +43,23 @@ object Recordings {
     fun coreBinary(context: Context): File = File(context.applicationInfo.nativeLibraryDir, "libsensio.so")
 }
 
+/** The user's settings that change what a session does. */
+object Options {
+    private const val PREFS = "options"
+    private const val CLASSIC = "classic_discovery"
+
+    /**
+     * Bluetooth Classic discovery: off unless the user turns it on. It
+     * transmits inquiries (ADR-0001 section 5), through the phone's own
+     * certified radio, and slows BLE scanning while it runs.
+     */
+    fun classic(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(CLASSIC, false)
+
+    fun setClassic(context: Context, on: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(CLASSIC, on).apply()
+}
+
 object BuildInfo {
     fun version(context: Context): String =
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "unknown"
