@@ -4,3 +4,7 @@
 
 # Recordings hold other people's device identifiers and your own movements.
 /recordings/
+*.kismet
+*.kismet-journal
+*.pcap
+*.pcapng
