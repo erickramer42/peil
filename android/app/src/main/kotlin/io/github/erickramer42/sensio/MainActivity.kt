@@ -9,6 +9,7 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -53,6 +54,8 @@ class MainActivity : Activity() {
 
         fun row(vararg views: View) = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
+            // Labels of different sizes would otherwise shift their buttons down to one baseline.
+            isBaselineAligned = false
             views.forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
         }
         val buttons = LinearLayout(this).apply {
@@ -107,6 +110,9 @@ class MainActivity : Activity() {
     private fun button(label: String, action: () -> Unit) = Button(this).apply {
         text = label
         isAllCaps = false
+        // One line in every row: a long label shrinks rather than wrapping.
+        maxLines = 1
+        setAutoSizeTextTypeUniformWithConfiguration(10, 16, 1, TypedValue.COMPLEX_UNIT_SP)
         setOnClickListener { action() }
     }
 
