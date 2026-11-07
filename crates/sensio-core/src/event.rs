@@ -269,8 +269,8 @@ fn validate(event: &Event) -> Result<(), &'static str> {
             }
         }
         EventKind::BleAdvert { addr, .. } => {
-            if addr.is_empty() {
-                return Err("empty BLE address");
+            if !is_mac(addr) {
+                return Err("BLE address isn't of the form xx:xx:xx:xx:xx:xx");
             }
         }
         EventKind::Tpms {

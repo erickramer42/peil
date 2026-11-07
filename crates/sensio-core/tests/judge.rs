@@ -120,6 +120,27 @@ fn a_malformed_bssid_is_rejected_without_quoting_it() {
 }
 
 #[test]
+fn a_malformed_ble_address_is_rejected_without_quoting_it() {
+    for addr in [
+        "",
+        "zz:aa:aa:00:00:01",
+        "aa:aa:aa:00:00",
+        "aaaaaa000001",
+        "aa:aa:aa:00:00:01:02",
+    ] {
+        let line = format!(r#"{{"t_ns":1,"source":"kismet","kind":"ble_advert","addr":"{addr}"}}"#);
+        assert_eq!(
+            rejection(&line),
+            "line 1: BLE address isn't of the form xx:xx:xx:xx:xx:xx",
+            "{addr}"
+        );
+    }
+    let mixed_case =
+        r#"{"t_ns":1,"source":"kismet","kind":"ble_advert","addr":"AA:aa:Aa:00:00:01"}"#;
+    assert!(accepted(mixed_case));
+}
+
+#[test]
 fn a_malformed_station_address_is_rejected() {
     let err = rejection(&wifi_client(r#""addr":"ff:ff:ff:00:00""#));
     assert_eq!(
