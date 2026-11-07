@@ -15,6 +15,11 @@ class LicensesTest {
     }
 
     @Test
+    fun theAppsApacheLicenseIsTheRepositorys() {
+        assertEquals(File("../../LICENSE-APACHE").readText(), File(assets, About.APACHE).readText())
+    }
+
+    @Test
     fun theApacheLicenseIsTheCanonicalText() {
         // The SHA-256 of https://www.apache.org/licenses/LICENSE-2.0.txt.
         val sha = MessageDigest.getInstance("SHA-256").digest(File(assets, About.APACHE).readBytes())

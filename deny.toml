@@ -1,6 +1,6 @@
 # cargo-deny's policy (`cargo deny check`). It guards ADR-0001 section 2:
 # Peil links none of the sensor tier's code, and every dependency's own
-# license leaves Peil's code MIT.
+# license leaves Peil's code under its own licenses, MIT or Apache-2.0.
 
 [graph]
 # Every target platform, with all features: the widest graph a build can pull.
@@ -14,7 +14,7 @@ yanked = "deny"
 ignore = []
 
 [licenses]
-# Everything that ships is used under MIT, Peil's own license. An expression
+# Everything that ships is used under MIT, one of Peil's two licenses. An expression
 # with an allowed alternative passes on it (`MIT OR Apache-2.0`), so a crate
 # offered only under another license needs a deliberate change here. Never a
 # GPL, LGPL or AGPL license: allowing one is a change to ADR-0001 section 2.

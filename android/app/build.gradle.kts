@@ -38,6 +38,7 @@ dependencies {
 tasks.withType<Test>().configureEach {
     inputs.dir("src/main/assets/licenses")
     inputs.file(rootProject.file("../LICENSE-MIT"))
+    inputs.file(rootProject.file("../LICENSE-APACHE"))
 }
 
 // ADR-0004 sections 8 and 9: the APK packages the Kotlin standard library

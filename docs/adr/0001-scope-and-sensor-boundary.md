@@ -23,6 +23,8 @@ Amended 2026-11-07: the question is two, the first leading: what is transmitting
 
    Amended 2026-11-06: on an Android phone the sensor tier is the operating system itself; the app reads Android's scan results and sensor readings and captures nothing below those interfaces (ADR-0004 section 3). Havne's `havne-cli`, for the vehicle's own data, is read the same way as the other programs: its JSON lines through a pipe.
 2. **Peil links none of their code.** The boundary is a process boundary, so Peil's own code stays under MIT while Kismet and rtl_433 stay under the GPL. Peil doesn't ship them; a user installs them. If a future package bundles them, it meets their licenses for those programs (source offer, license texts) and records that in THIRD_PARTY_NOTICES.md.
+
+   Amended 2026-11-07: Peil's own code is under MIT or Apache-2.0, at the recipient's option, as is the convention for Rust crates; Apache-2.0 adds an express patent license from each contributor. The MIT option keeps Peil usable wherever MIT alone was, and the process boundary to the GPL programs is unchanged.
 3. **Peil's own parts** are the source adapters, recordings and replay, address-rotation linking, fusion, the judge, and its front ends: the CLI first, then a HUD.
 
    Amended 2026-11-06: the first HUD is the Android app (ADR-0004), which runs the same core as the CLI.

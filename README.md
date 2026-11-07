@@ -105,4 +105,13 @@ Peil is for checking nearby objects for abnormal RF, signal or other EM activity
 
 ## License
 
-Licensed under [MIT](LICENSE-MIT). Third-party programs Peil works with keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Licensed under either of
+
+- the Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE)), or
+- the MIT License ([LICENSE-MIT](LICENSE-MIT)),
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Peil by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
+
+Third-party programs Peil works with keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

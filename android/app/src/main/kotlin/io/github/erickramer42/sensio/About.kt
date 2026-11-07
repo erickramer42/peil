@@ -7,9 +7,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * The About page (ADR-0004 section 8): the app's version and license, and
- * the licenses of the libraries packaged in the APK, from the APK's own
- * assets. Apache-2.0 asks that anyone who receives the program gets its
+ * The About page (ADR-0004 section 8): the app's version, its two licenses
+ * (MIT or Apache-2.0, at the recipient's option), and the libraries packaged
+ * in the APK, under the same Apache-2.0 text, from the APK's own assets. Apache-2.0 asks that anyone who receives the program gets its
  * text. The list of libraries is the one `checkPackagedLibraries` allows.
  */
 object About {
@@ -21,12 +21,14 @@ object About {
         return buildString {
             append("Peil ${BuildInfo.version(context)}\n")
             append("What is transmitting around you, and is any of it unusual.\n\n")
-            append("Peil is free software under the MIT License:\n\n")
-            append(asset(MIT).trim())
-            append("\n\n----\n\n")
-            append("This app includes the Kotlin standard library (org.jetbrains.kotlin:kotlin-stdlib) ")
+            append("Peil is free software, licensed under either of the Apache License, Version 2.0 ")
+            append("or the MIT License, at your option.\n\n")
+            append("This app also includes the Kotlin standard library (org.jetbrains.kotlin:kotlin-stdlib) ")
             append("and the JetBrains annotations (org.jetbrains:annotations), ")
-            append("each under the Apache License, Version 2.0:\n\n")
+            append("each under the Apache License, Version 2.0.\n\n")
+            append("---- The MIT License ----\n\n")
+            append(asset(MIT).trim())
+            append("\n\n---- The Apache License, Version 2.0 ----\n\n")
             append(asset(APACHE).trim())
             append('\n')
         }

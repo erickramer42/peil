@@ -35,6 +35,8 @@ ADR-0001 assumes a Linux computer reading Kismet, rtl_433 and gpsd as separate p
 
 8. **Licensing: MIT as far as the platform allows.** The app's own code is MIT, like the workspace, and the core inside it is held to `deny.toml`. The app uses Android's platform APIs directly (its views and canvas for the display, Camera2 for the camera, its own threads) rather than AndroidX, Jetpack Compose, CameraX or kotlinx coroutines, which are Apache-2.0 and would ship inside the APK. The only third-party libraries in the APK are the Kotlin standard library and the annotations it depends on (`org.jetbrains:annotations`), both Apache-2.0, which every Kotlin program ships; the app shows their license text, and THIRD_PARTY_NOTICES.md lists them once the APK exists. No Google Play services, analytics, crash reporting, ads or network libraries. Another library in the APK needs this ADR amended. Build and test tools that never ship in the APK (Gradle, the Android Gradle plugin, a test framework) are outside this rule.
 
+   Amended 2026-11-07: the app's own code is under MIT or Apache-2.0, like the workspace (ADR-0001 section 2, as amended), and the About page shows both texts. What may ship in the APK is unchanged.
+
 9. **CI builds the app:** the core for `aarch64-linux-android` with the Android NDK, the APK, and the app's JVM unit tests. Because cargo-deny can't see Gradle, a check lists the libraries packaged in the APK and fails on any beyond the Kotlin standard library and its annotations; another check reads the merged manifest (minimum SDK, the permission list, the service and its flags, backups off); and the Gradle wrapper's checksum is validated. Actions are pinned as for the Rust jobs.
 
 ## Consequences

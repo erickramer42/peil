@@ -14,7 +14,7 @@ If Peil is ever distributed together with any of them, that distribution meets t
 
 ## The Android app
 
-The APK ships the Kotlin standard library (`org.jetbrains.kotlin:kotlin-stdlib`) and the JetBrains annotations it depends on (`org.jetbrains:annotations`), both Apache-2.0, which every Kotlin program ships; everything else it uses is Android's own platform API ([ADR-0004](docs/adr/0004-android-app.md) section 8). The app's About page shows Peil's MIT License and the Apache License's full text from the APK itself; neither library's jar carries a NOTICE file. Build and test tools (Gradle, the Android Gradle plugin, JUnit) never ship in the APK.
+The APK ships the Kotlin standard library (`org.jetbrains.kotlin:kotlin-stdlib`) and the JetBrains annotations it depends on (`org.jetbrains:annotations`), both Apache-2.0, which every Kotlin program ships; everything else it uses is Android's own platform API ([ADR-0004](docs/adr/0004-android-app.md) section 8). The app's About page shows Peil's licenses, MIT and Apache-2.0, from the APK itself, and the Apache License's text covers both libraries; neither library's jar carries a NOTICE file. Build and test tools (Gradle, the Android Gradle plugin, JUnit) never ship in the APK.
 
 ## Rust crates
 
