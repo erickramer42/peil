@@ -1,6 +1,6 @@
 # ADR-0004: The Android app
 
-Status: Accepted. Not yet built: the spike on the test phone, the app, the core's Android build and streaming mode, the laptop link. Amends ADR-0001 sections 1 and 3 and its consequences, and ADR-0002 sections 1 and 3.
+Status: Accepted. Built: the core's normalizer for the app's raw lines (the `android` source). Not yet built: the spike on the test phone, the app, the core's Android build and streaming mode, the laptop link. Amends ADR-0001 sections 1 and 3 and its consequences, and ADR-0002 sections 1 and 3.
 
 ## Context
 

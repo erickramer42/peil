@@ -11,6 +11,7 @@
 
 use sensio_core::{EventKind, Normalize};
 
+pub mod android;
 pub mod sensio;
 
 /// The normalizers, chosen by a feed line's `source`.
@@ -20,6 +21,7 @@ pub struct Sources;
 impl Normalize for Sources {
     fn normalize(&self, source: &str, raw: &str) -> Result<Vec<EventKind>, String> {
         match source {
+            android::SOURCE => android::normalize(raw),
             sensio::SOURCE => sensio::normalize(raw),
             _ => Err("no normalizer for this source".to_owned()),
         }

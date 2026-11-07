@@ -144,6 +144,7 @@ name = "sensio-sources"
 version = "0.1.0"
 dependencies = [
  "sensio-core",
+ "serde",
  "serde_json",
 ]
 

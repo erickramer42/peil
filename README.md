@@ -14,10 +14,10 @@ An early scaffold. What works today:
 - The judge with one rule, `persistence.places`: a device seen at several distinct places over a span of time. It's the first of a family of anomaly evidence ([ADR-0001](docs/adr/0001-scope-and-sensor-boundary.md)); its parameters are checked before it runs.
 - `peil judge <events.jsonl>`: one verdict per line, as JSON.
 - `peil describe <events.jsonl>`: the emitter picture, one description per line, loud first: each emitter's kind, signal band (strength, never distance), sightings per receiver, vendor block from a registry you supply (`--vendors`, the IEEE's MA-L, MA-M and MA-S lists), the tracker network its advert's format names (Apple Find My, Google's Find Hub network, DULT), and an access point's security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)). `peil live` writes the same picture as an `emitters` line before each answer's verdicts.
-- `peil live [feed]`: reads a live feed from a file or stdin and answers each request in it with the verdicts over the events before it ([ADR-0005](docs/adr/0005-live-feed-and-verdict-stream.md)). A saved feed replays to the same bytes. Its one source so far is `sensio`, a normalized event carried as a raw line.
+- `peil live [feed]`: reads a live feed from a file or stdin and answers each request in it with the verdicts over the events before it ([ADR-0005](docs/adr/0005-live-feed-and-verdict-stream.md)). A saved feed replays to the same bytes. Its sources so far are `sensio`, a normalized event carried as a raw line, and `android`, the app's raw lines: Wi-Fi scan results with their security, BLE scan results with the advert's bytes parsed into manufacturer data, service data and service UUIDs (the name left out), and location fixes.
 - Golden verdicts for a synthetic drive, as events and as a feed; property tests that verdicts don't depend on input order and that each live answer is the judge over the events before it.
 
-Not built yet: hardware categories beyond trackers, the Android app, the source adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
+Not built yet: hardware categories beyond trackers, the Android app, the Kismet, rtl_433 and gpsd adapters and their normalizers (so no real session is recorded yet), linking a BLE device across address rotations, fusing sources into one device, the HUD, and the bridge to vehicle data. The [ADRs](docs/adr/README.md) describe the plan.
 
 ## How it fits together
 
@@ -48,7 +48,7 @@ cargo run -p sensio-cli -- describe crates/sensio-core/tests/fixtures/drive_wifi
 cargo deny check     # licenses, bans, sources, advisories (from cargo install cargo-deny)
 ```
 
-Fuzz targets for the parsers of untrusted input (the event lines, the feed, the live judge) are in `fuzz/`, a crate of its own that needs a nightly toolchain and [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
+Fuzz targets for the parsers of untrusted input (the event lines, the feed, the live judge, the app's lines) are in `fuzz/`, a crate of its own that needs a nightly toolchain and [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz):
 
 ```sh
 cd fuzz

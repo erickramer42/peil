@@ -1,6 +1,6 @@
 # ADR-0006: The emitter picture and the describe layer
 
-Status: Accepted. Built: the event schema's new fields, the describe step with three tracker formats (Apple Find My, Google's Find Hub network, DULT), the `emitters` line, the vendor registry import (`--vendors`), and `peil describe`. Not yet built: hardware categories beyond trackers, Samsung's and Tile's tracker formats, and the normalizers that fill the new fields from real sources.
+Status: Accepted. Built: the event schema's new fields, the describe step with three tracker formats (Apple Find My, Google's Find Hub network, DULT), the `emitters` line, the vendor registry import (`--vendors`), and `peil describe`. Not yet built: hardware categories beyond trackers, Samsung's and Tile's tracker formats, and the Kismet normalizer that fills the new fields (the `android` normalizer fills them from the app's lines).
 
 ## Context
 
