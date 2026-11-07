@@ -1,0 +1,13 @@
+{"t_ns":1800000000000000000,"source":"android","receiver":"phone","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}
+{"t_ns":1800000001000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"EE:EE:EE:00:00:01","ssid":"synthetic-hotspot","freq_mhz":2437,"rssi_dbm":-55}
+{"t_ns":1800000002000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"ff:ff:ff:00:00:02","bssid":"ee:ee:ee:00:00:01","freq_mhz":2437,"rssi_dbm":-60}
+{"t_ns":1800000003000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"11:11:11:00:00:03","freq_mhz":5180,"rssi_dbm":-80}
+{"t_ns":1800000600000000000,"source":"android","receiver":"phone","kind":"gnss_fix","lat_deg":60.01,"lon_deg":10.0}
+{"t_ns":1800000601000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_ap","bssid":"ee:ee:ee:00:00:01","ssid":"synthetic-hotspot","freq_mhz":2437,"rssi_dbm":-57}
+{"t_ns":1800000602000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"ff:ff:ff:00:00:02","bssid":"ee:ee:ee:00:00:01","rssi_dbm":-62}
+{"t_ns":1800001200000000000,"source":"android","receiver":"phone","kind":"gnss_fix","lat_deg":60.02,"lon_deg":10.0}
+{"t_ns":1800001201000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"ee:ee:ee:00:00:01","ssid":"synthetic-hotspot","rssi_dbm":-54}
+{"t_ns":1800001202000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"FF:FF:FF:00:00:02","freq_mhz":2437}
+{"t_ns":1800001800000000000,"source":"android","receiver":"phone","kind":"gnss_fix","lat_deg":60.03,"lon_deg":10.0}
+{"t_ns":1800001801000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"ee:ee:ee:00:00:01","ssid":"synthetic-hotspot","freq_mhz":2437,"rssi_dbm":-56}
+{"t_ns":1800001802000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"22:22:22:00:00:04","freq_mhz":5180,"rssi_dbm":-75}

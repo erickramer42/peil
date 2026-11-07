@@ -10,7 +10,7 @@ It takes what established sensors already see (Kismet for Wi-Fi and BLE, rtl_433
 
 An early scaffold. What works today:
 
-- The normalized event schema (BLE adverts, TPMS transmissions, GNSS fixes) as JSON lines, with input validation whose errors never repeat the input's values.
+- The normalized event schema (BLE adverts, Wi-Fi access points and stations, TPMS transmissions, GNSS fixes, each with the receiver that saw it) as JSON lines, with input validation whose errors never repeat the input's values.
 - The judge with one rule, `persistence.places`: a device seen at several distinct places over a span of time. It's the first of a family of anomaly evidence ([ADR-0001](docs/adr/0001-scope-and-sensor-boundary.md)); its parameters are checked before it runs.
 - `peil judge <events.jsonl>`: one verdict per line, as JSON.
 - Golden verdicts for a synthetic drive, and a property test that verdicts don't depend on input order.
@@ -48,13 +48,17 @@ Golden verdicts are [insta](https://insta.rs) snapshots. After a deliberate rule
 
 ## Event format
 
-One JSON object per line. `t_ns` is nanoseconds since the Unix epoch (UTC) on the session clock.
+One JSON object per line. `t_ns` is nanoseconds since the Unix epoch (UTC) on the session clock. `source` is the program that produced the line; the optional `receiver` names the radio that saw it, so a phone and a laptop in the same car can be told apart. The same address from two receivers is still one device.
 
 ```json
 {"t_ns":1800000000000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}
-{"t_ns":1800000001000000000,"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-58}
+{"t_ns":1800000001000000000,"source":"kismet","receiver":"thinkpad","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-58}
+{"t_ns":1800000002000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"cc:cc:cc:00:00:01","ssid":"example-hotspot","freq_mhz":2437,"rssi_dbm":-61}
+{"t_ns":1800000003000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"dd:dd:dd:00:00:01","bssid":"cc:cc:cc:00:00:01","freq_mhz":5180,"rssi_dbm":-70}
 {"t_ns":1800000004000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-12.5}
 ```
+
+A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for.
 
 A line that can't be used is rejected with its line, its column and what's wrong (`line 3, column 110: invalid type: string (value left out), expected i16`), never with the value itself: those are other people's identifiers.
 

@@ -18,8 +18,14 @@ pub type TimeNs = i64;
 pub struct Event {
     /// When the source saw it, on the session clock.
     pub t_ns: TimeNs,
-    /// What produced it, for example `kismet`, `rtl_433` or `gpsd`.
+    /// What produced it, for example `kismet`, `rtl_433`, `gpsd` or `android`.
     pub source: String,
+    /// The radio that received it and where it sits (`phone`, `thinkpad`,
+    /// `rear-pi`), from the user's configuration; `None` when unknown. It
+    /// never splits a device: the same address from two receivers is one
+    /// device.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receiver: Option<String>,
     /// What was seen.
     #[serde(flatten)]
     pub kind: EventKind,
@@ -43,6 +49,29 @@ pub enum EventKind {
         /// Received signal strength, if the decoder gave one.
         rssi_dbm: Option<f32>,
     },
+    /// A Wi-Fi access point, from its beacons or a scan result.
+    WifiAp {
+        /// The access point's address (BSSID).
+        bssid: String,
+        /// The network name it announces; `None` when hidden or not reported.
+        ssid: Option<String>,
+        /// The channel's center frequency, if the source gave it.
+        freq_mhz: Option<u32>,
+        /// Received signal strength, if the source gave one.
+        rssi_dbm: Option<i16>,
+    },
+    /// A Wi-Fi station sending frames, seen in monitor mode. Nothing it sent
+    /// is kept beyond its address and the network it's on (ADR-0001 section 5).
+    WifiClient {
+        /// The station's address.
+        addr: String,
+        /// The address (BSSID) of the network it's on, if any.
+        bssid: Option<String>,
+        /// The channel's center frequency, if the source gave it.
+        freq_mhz: Option<u32>,
+        /// Received signal strength, if the source gave one.
+        rssi_dbm: Option<i16>,
+    },
     /// A position fix from the GNSS receiver.
     GnssFix {
         /// Latitude, degrees north.
@@ -55,12 +84,15 @@ pub enum EventKind {
 /// A device the judge tracks: one per transmitter identity a source reports.
 ///
 /// The prefix names the radio, so a BLE address and a TPMS ID never collide.
+/// Wi-Fi access points and stations share `wifi:`: a BSSID and a station's
+/// address come from one address space, so one address is one radio in
+/// either role.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]
 pub struct DeviceId(String);
 
 impl DeviceId {
-    /// The ID's text form, for example `ble:aa:bb:cc:dd:ee:ff`.
+    /// The ID's text form, for example `ble:aa:bb:cc:dd:ee:ff` or `wifi:aa:bb:cc:dd:ee:ff`.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
@@ -83,6 +115,9 @@ impl EventKind {
             }
             Self::Tpms { sensor_id, .. } => {
                 Some(DeviceId(format!("tpms:{}", sensor_id.to_ascii_lowercase())))
+            }
+            Self::WifiAp { bssid: addr, .. } | Self::WifiClient { addr, .. } => {
+                Some(DeviceId(format!("wifi:{}", addr.to_ascii_lowercase())))
             }
             Self::GnssFix { .. } => None,
         }
@@ -185,7 +220,45 @@ fn reason_without_values(err: &serde_json::Error) -> String {
     }
 }
 
+/// Whether `s` is a 48-bit address written `xx:xx:xx:xx:xx:xx` in hex, either case.
+fn is_mac(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    bytes.len() == 17
+        && bytes.iter().enumerate().all(|(i, &b)| {
+            if i % 3 == 2 {
+                b == b':'
+            } else {
+                b.is_ascii_hexdigit()
+            }
+        })
+}
+
+/// Whether `mhz` is a center frequency inside a Wi-Fi band (2.4, 5 or 6 GHz).
+fn is_wifi_freq(mhz: u32) -> bool {
+    (2400..=2500).contains(&mhz) || (4900..=5900).contains(&mhz) || (5925..=7125).contains(&mhz)
+}
+
+/// A received signal strength a receiver can plausibly report, in dBm.
+const RSSI_DBM: std::ops::RangeInclusive<i16> = -127..=20;
+
+/// The checks a Wi-Fi sighting's optional radio fields share.
+fn validate_wifi_radio(freq_mhz: Option<u32>, rssi_dbm: Option<i16>) -> Result<(), &'static str> {
+    if freq_mhz.is_some_and(|f| !is_wifi_freq(f)) {
+        return Err("Wi-Fi frequency outside the Wi-Fi bands");
+    }
+    if rssi_dbm.is_some_and(|r| !RSSI_DBM.contains(&r)) {
+        return Err("Wi-Fi RSSI out of range");
+    }
+    Ok(())
+}
+
 fn validate(event: &Event) -> Result<(), &'static str> {
+    if let Some(receiver) = &event.receiver {
+        let allowed = |b: u8| b.is_ascii_lowercase() || b.is_ascii_digit() || b"-_.".contains(&b);
+        if receiver.is_empty() || receiver.len() > 32 || !receiver.bytes().all(allowed) {
+            return Err("receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'");
+        }
+    }
     match &event.kind {
         EventKind::GnssFix { lat_deg, lon_deg } => {
             if !lat_deg.is_finite() || !(-90.0..=90.0).contains(lat_deg) {
@@ -210,6 +283,35 @@ fn validate(event: &Event) -> Result<(), &'static str> {
             if rssi_dbm.is_some_and(|r| !r.is_finite()) {
                 return Err("TPMS RSSI not finite");
             }
+        }
+        EventKind::WifiAp {
+            bssid,
+            ssid,
+            freq_mhz,
+            rssi_dbm,
+        } => {
+            if !is_mac(bssid) {
+                return Err("Wi-Fi BSSID isn't an address of the form xx:xx:xx:xx:xx:xx");
+            }
+            // 802.11 allows up to 32 bytes; a hidden network has no name, never an empty one.
+            if ssid.as_ref().is_some_and(|s| s.is_empty() || s.len() > 32) {
+                return Err("SSID must be 1 to 32 bytes");
+            }
+            validate_wifi_radio(*freq_mhz, *rssi_dbm)?;
+        }
+        EventKind::WifiClient {
+            addr,
+            bssid,
+            freq_mhz,
+            rssi_dbm,
+        } => {
+            if !is_mac(addr) {
+                return Err("Wi-Fi station address isn't of the form xx:xx:xx:xx:xx:xx");
+            }
+            if bssid.as_ref().is_some_and(|b| !is_mac(b)) {
+                return Err("Wi-Fi BSSID isn't an address of the form xx:xx:xx:xx:xx:xx");
+            }
+            validate_wifi_radio(*freq_mhz, *rssi_dbm)?;
         }
     }
     Ok(())
