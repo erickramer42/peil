@@ -209,6 +209,8 @@ pub enum Kind {
     ),
     /// A Wi-Fi station.
     Client(Addr, Option<Addr>, Option<u32>, Option<i16>),
+    /// A Bluetooth Classic device.
+    Classic(Addr, Option<i16>, Option<u32>),
 }
 
 impl Kind {
@@ -249,6 +251,11 @@ impl Kind {
                 bssid: bssid.as_ref().map(Addr::text),
                 freq_mhz: *freq_mhz,
                 rssi_dbm: *rssi_dbm,
+            },
+            Self::Classic(addr, rssi_dbm, device_class) => EventKind::BtClassic {
+                addr: addr.text(),
+                rssi_dbm: *rssi_dbm,
+                device_class: *device_class,
             },
         }
     }

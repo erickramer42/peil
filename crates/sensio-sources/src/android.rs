@@ -14,6 +14,9 @@
 //!   The record is parsed here into manufacturer data, service data and
 //!   service UUIDs; its local name is left in the raw line only (ADR-0006
 //!   section 6).
+//! - `bt`: one Bluetooth Classic device found by discovery, which the user
+//!   turns on (it transmits inquiries): `addr`, `rssi` and `class`, the
+//!   `BluetoothClass` it announced. Its name stays in the raw line only.
 //! - `loc`: one location fix: `lat`, `lon` in degrees. Other fields the app
 //!   writes (`provider`, `acc`, `speed`) stay in the raw line.
 //!
@@ -48,6 +51,11 @@ enum Line {
         rssi: Option<i16>,
         #[serde(default)]
         record: String,
+    },
+    Bt {
+        addr: String,
+        rssi: Option<i16>,
+        class: Option<u32>,
     },
     Loc {
         lat: f64,
@@ -86,6 +94,11 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
                 service_uuids,
             }])
         }
+        Line::Bt { addr, rssi, class } => Ok(vec![EventKind::BtClassic {
+            addr,
+            rssi_dbm: wifi::dbm(rssi),
+            device_class: class.filter(|&c| c <= 0x00ff_ffff),
+        }]),
         Line::Loc { lat, lon } => Ok(vec![EventKind::GnssFix {
             lat_deg: lat,
             lon_deg: lon,

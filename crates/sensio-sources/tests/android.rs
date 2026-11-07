@@ -138,3 +138,18 @@ fn a_location_is_a_gnss_fix_and_an_unknown_type_is_rejected() {
     let reason = android(r#"{"t":"zz:zz:zz:00:00:09"}"#).expect_err("unknown type");
     assert!(!reason.contains("zz:zz:zz"), "{reason}");
 }
+
+#[test]
+fn a_classic_device_found_by_discovery_gives_its_class() {
+    assert_eq!(
+        android(
+            r#"{"t":"bt","addr":"EE:EE:EE:00:00:01","rssi":-66,"class":2098180,"name":"zz-name"}"#
+        )
+        .expect("the line normalizes"),
+        [EventKind::BtClassic {
+            addr: "EE:EE:EE:00:00:01".to_owned(),
+            rssi_dbm: Some(-66),
+            device_class: Some(2_098_180),
+        }]
+    );
+}

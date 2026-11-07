@@ -15,9 +15,10 @@
 //! - `Bluetooth`, `BTLE` and `BTLE Tracker`: a BLE advert, with its
 //!   manufacturer data (Kismet keeps the bytes after the company ID, as the
 //!   event schema does), service data and service UUIDs.
+//! - `Bluetooth`, `BR/EDR`: a Bluetooth Classic device, with its Class of
+//!   Device.
 //! - `Wi-Fi Bridged` (wired devices seen through an access point, not on the
-//!   air) and `BR/EDR` (Bluetooth Classic, which the event schema has no kind
-//!   for yet) give no event.
+//!   air) gives no event.
 //!
 //! Everything else in a record is left in the raw line: the probed network
 //! names, which the core never keeps; WPS and vendor device names, which name
@@ -134,6 +135,12 @@ struct AdvertisedSsid {
 #[derive(Deserialize)]
 struct Bluetooth {
     #[serde(
+        rename = "bluetooth.device.class",
+        default,
+        deserialize_with = "lenient"
+    )]
+    class: Option<i64>,
+    #[serde(
         rename = "bluetooth.device.manuf_company_id",
         default,
         deserialize_with = "lenient"
@@ -207,7 +214,16 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
                 rssi_dbm,
             }])
         }
-        ("IEEE802.11", "Wi-Fi Bridged") | ("Bluetooth", "BR/EDR") => Ok(Vec::new()),
+        ("IEEE802.11", "Wi-Fi Bridged") => Ok(Vec::new()),
+        ("Bluetooth", "BR/EDR") => Ok(vec![EventKind::BtClassic {
+            addr: device.mac,
+            rssi_dbm,
+            device_class: device
+                .bluetooth
+                .and_then(|b| b.class)
+                .and_then(|c| u32::try_from(c).ok())
+                .filter(|&c| c <= 0x00ff_ffff),
+        }]),
         ("Bluetooth", "BTLE" | "BTLE Tracker") => {
             let bt = device.bluetooth;
             let (manufacturer_data, service_data, service_uuids) =

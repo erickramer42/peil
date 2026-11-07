@@ -81,6 +81,8 @@ pub enum EmitterKind {
     Station,
     /// A BLE device.
     Ble,
+    /// A Bluetooth Classic device.
+    BtClassic,
     /// A tire-pressure sensor.
     Tpms,
 }
@@ -491,6 +493,9 @@ pub fn describe(
             }
             EventKind::BleAdvert { addr, rssi_dbm, .. } => {
                 (EmitterKind::Ble, rssi_dbm.map(f32::from), Some(addr))
+            }
+            EventKind::BtClassic { addr, rssi_dbm, .. } => {
+                (EmitterKind::BtClassic, rssi_dbm.map(f32::from), Some(addr))
             }
             EventKind::Tpms { rssi_dbm, .. } => (EmitterKind::Tpms, *rssi_dbm, None),
             EventKind::GnssFix { .. } => continue,

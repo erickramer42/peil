@@ -178,15 +178,13 @@ fn a_ble_device_gives_its_manufacturer_data_and_service_uuids() {
 }
 
 #[test]
-fn bridged_and_classic_devices_give_no_event_and_unknown_ones_are_rejected() {
-    for (phy, kind) in [("IEEE802.11", "Wi-Fi Bridged"), ("Bluetooth", "BR/EDR")] {
-        let record = json!({
-            "kismet.device.base.macaddr": "cc:cc:cc:00:00:09",
-            "kismet.device.base.phyname": phy,
-            "kismet.device.base.type": kind
-        });
-        assert_eq!(kismet(&record), Ok(Vec::new()), "{kind}");
-    }
+fn bridged_devices_give_no_event_and_unknown_ones_are_rejected() {
+    let bridged = json!({
+        "kismet.device.base.macaddr": "cc:cc:cc:00:00:09",
+        "kismet.device.base.phyname": "IEEE802.11",
+        "kismet.device.base.type": "Wi-Fi Bridged"
+    });
+    assert_eq!(kismet(&bridged), Ok(Vec::new()));
     for (phy, kind, why) in [
         ("IEEE802.11", "Wi-Fi zz", "type not handled"),
         ("zz-phy", "zz", "PHY not handled"),
@@ -203,4 +201,23 @@ fn bridged_and_classic_devices_give_no_event_and_unknown_ones_are_rejected() {
         .normalize("kismet", r#"{"kismet.device.base.phyname":"zz"}"#)
         .expect_err("no address");
     assert!(!reason.contains("zz"), "{reason}");
+}
+
+#[test]
+fn a_classic_device_gives_its_class_of_device() {
+    let record = json!({
+        "kismet.device.base.macaddr": "EE:EE:EE:00:00:01",
+        "kismet.device.base.phyname": "Bluetooth",
+        "kismet.device.base.type": "BR/EDR",
+        "kismet.device.base.signal": signal(-66),
+        "bluetooth.device": {"bluetooth.device.class": 0x0020_0404, "bluetooth.device.major_class": "zz-audio"}
+    });
+    assert_eq!(
+        kismet(&record).expect("the record normalizes"),
+        [EventKind::BtClassic {
+            addr: "EE:EE:EE:00:00:01".to_owned(),
+            rssi_dbm: Some(-66),
+            device_class: Some(0x0020_0404),
+        }]
+    );
 }

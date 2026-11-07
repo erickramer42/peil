@@ -368,3 +368,32 @@ fn advert_contents_and_security_parse_and_bad_ones_are_rejected() {
         rejection(&unknown)
     );
 }
+
+#[test]
+fn a_classic_device_parses_and_bad_ones_are_rejected() {
+    let classic =
+        |fields: &str| format!(r#"{{"t_ns":1,"source":"kismet","kind":"bt_classic",{fields}}}"#);
+    assert!(accepted(&classic(
+        r#""addr":"ee:ee:ee:00:00:01","rssi_dbm":-66,"device_class":2098180"#
+    )));
+    for (fields, reason) in [
+        (
+            r#""addr":"ee:ee:ee:00:00","rssi_dbm":-66"#,
+            "Bluetooth address isn't of the form xx:xx:xx:xx:xx:xx",
+        ),
+        (
+            r#""addr":"ee:ee:ee:00:00:01","rssi_dbm":21"#,
+            "Bluetooth RSSI out of range",
+        ),
+        (
+            r#""addr":"ee:ee:ee:00:00:01","rssi_dbm":-66,"device_class":16777216"#,
+            "Bluetooth Class of Device is more than 24 bits",
+        ),
+    ] {
+        assert_eq!(
+            rejection(&classic(fields)),
+            format!("line 1: {reason}"),
+            "{fields}"
+        );
+    }
+}

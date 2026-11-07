@@ -53,6 +53,17 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         service_uuids: Vec<String>,
     },
+    /// A Bluetooth Classic (BR/EDR) device, found by an inquiry. Its name is
+    /// never kept here, as for BLE.
+    BtClassic {
+        /// The device's address (a BR/EDR address is always public).
+        addr: String,
+        /// Received signal strength, if the source gave one.
+        rssi_dbm: Option<i16>,
+        /// The Class of Device it announced (24 bits), if the source gave it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        device_class: Option<u32>,
+    },
     /// A tire-pressure sensor's transmission.
     Tpms {
         /// The sensor's ID as the decoder reported it.
@@ -174,6 +185,9 @@ impl EventKind {
         match self {
             Self::BleAdvert { addr, .. } => {
                 Some(DeviceId(format!("ble:{}", addr.to_ascii_lowercase())))
+            }
+            Self::BtClassic { addr, .. } => {
+                Some(DeviceId(format!("bt:{}", addr.to_ascii_lowercase())))
             }
             Self::Tpms { sensor_id, .. } => {
                 Some(DeviceId(format!("tpms:{}", sensor_id.to_ascii_lowercase())))
@@ -425,6 +439,21 @@ fn validate(event: &Event) -> Result<(), &'static str> {
                 return Err("BLE RSSI out of range");
             }
             validate_advert(manufacturer_data, service_data, service_uuids)?;
+        }
+        EventKind::BtClassic {
+            addr,
+            rssi_dbm,
+            device_class,
+        } => {
+            if !is_mac(addr) {
+                return Err("Bluetooth address isn't of the form xx:xx:xx:xx:xx:xx");
+            }
+            if rssi_dbm.is_some_and(|r| !RSSI_DBM.contains(&r)) {
+                return Err("Bluetooth RSSI out of range");
+            }
+            if device_class.is_some_and(|c| c > 0x00ff_ffff) {
+                return Err("Bluetooth Class of Device is more than 24 bits");
+            }
         }
         EventKind::Tpms {
             sensor_id,
