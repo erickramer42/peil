@@ -1,6 +1,6 @@
 # ADR-0004: The Android app
 
-Status: Accepted. Built: the spike on the test phone, the core's Android build (`android/build-core.sh`) and streaming mode (`peil live`), the normalizer for the app's raw lines (the `android` source), and a first app: the session service, the saved feeds with their retention and "delete all", the core as a process, and the ring. Not yet built: release signing, the in-app license notices, restarting a core that stopped, the heading sensor, raw GNSS measurements, the camera and find mode, the laptop link, and the CI build and its checks. Amends ADR-0001 sections 1 and 3 and its consequences, and ADR-0002 sections 1 and 3.
+Status: Accepted. Built: the spike on the test phone, the core's Android build (`android/build-core.sh`) and streaming mode (`peil live`), the normalizer for the app's raw lines (the `android` source), and a first app: the session service, the saved feeds with their retention and "delete all", the core as a process restarted when it stops, the ring, and the CI build with its library, manifest and alignment checks. Not yet built: release signing, the in-app license notices, the heading sensor, raw GNSS measurements, the camera and find mode, and the laptop link. Amends ADR-0001 sections 1 and 3 and its consequences, and ADR-0002 sections 1 and 3.
 
 ## Context
 

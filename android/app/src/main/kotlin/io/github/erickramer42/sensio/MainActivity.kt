@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private lateinit var startStop: Button
     private lateinit var retention: Button
     private lateinit var deleteAll: Button
+    private lateinit var mine: Button
     private val refresh: () -> Unit = { show() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,10 +44,11 @@ class MainActivity : Activity() {
         startStop = button("Start") { if (Live.running) stop() else start() }
         retention = button("") { cycleRetention() }
         deleteAll = button("Delete all") { confirmDeleteAll() }
+        mine = button("Mine") { chooseMine() }
 
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            listOf(startStop, retention, deleteAll).forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
+            listOf(startStop, mine, retention, deleteAll).forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
         }
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -106,13 +108,17 @@ class MainActivity : Activity() {
         retention.text = "Keep ${Recordings.retentionDays(this)} d"
         deleteAll.isEnabled = !running
 
-        val picture = Live.picture
+        val enrolled = Enrolled.devices(this)
+        val all = Live.picture
+        val picture = all?.let { p -> Picture(p.movement, p.emitters.filter { it.device !in enrolled }, p.older, p.recentS) }
+        val hidden = (all?.emitters?.size ?: 0) - (picture?.emitters?.size ?: 0)
         ring.picture = picture
         val coverage = Live.coverage
         status.text = buildString {
             append(Live.status)
             if (picture != null) {
                 append("\n${picture.emitters.size} emitters in the last ${picture.recentS} s, ${picture.older} older; ${picture.movement}")
+                if (hidden > 0) append("; $hidden of yours not shown")
             }
             if (coverage != null) {
                 append("\n${coverage.lines} lines, ${coverage.events} events, ${coverage.rejected} rejected")
@@ -165,6 +171,35 @@ class MainActivity : Activity() {
                 refused.joinToString { it.substringAfterLast('.') }
         }
     }
+
+    /** The user picks their own emitters; the loudest are offered first. */
+    private fun chooseMine() {
+        val enrolled = Enrolled.devices(this)
+        val offer = Enrolled.offer(Live.picture, enrolled)
+        if (offer.isEmpty()) {
+            status.text = "Start a session first: the emitters it hears are offered here, loudest first."
+            return
+        }
+        val labels = offer.map { (e, device) ->
+            when {
+                e == null -> "${device.substringAfter(':')} (not heard in the last minute)"
+                e.tracker != null -> "TRACKER " + oneLine(line(e))
+                else -> oneLine(line(e))
+            }
+        }.toTypedArray()
+        val checked = offer.map { (e, device) -> device in enrolled || Enrolled.suggested(e, enrolled) }.toBooleanArray()
+        AlertDialog.Builder(this)
+            .setTitle("Which are yours?")
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton("Save") { _, _ ->
+                Enrolled.set(this, offer.indices.filter { checked[it] }.map { offer[it].second }.toSet())
+                show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun oneLine(s: String) = s.replace(Regex("\\s+"), " ")
 
     private fun cycleRetention() {
         val choices = Recordings.RETENTION_CHOICES
