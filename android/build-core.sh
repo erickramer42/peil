@@ -20,8 +20,9 @@ clang="$ndk/toolchains/llvm/prebuilt/$host/bin/aarch64-linux-android${api}-clang
 
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$clang"
 # 16 KB pages: Android 15 and later devices may use them, and the packager
-# refuses misaligned libraries.
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384"
+# refuses misaligned libraries. Added to RUSTFLAGS, which overrides the
+# per-target setting; with --target it reaches only the target's code.
+export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384"
 
 cd "$repo"
 cargo build -p sensio-cli --release --locked --target aarch64-linux-android

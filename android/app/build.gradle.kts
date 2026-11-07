@@ -33,3 +33,28 @@ dependencies {
     // Tests only; never in the APK.
     testImplementation("junit:junit:4.13.2")
 }
+
+// ADR-0004 sections 8 and 9: the APK packages the Kotlin standard library
+// and its annotations, and nothing else. Fails on any other library, and on
+// finding none, which would mean the check looked at the wrong thing.
+tasks.register("checkPackagedLibraries") {
+    val allowed = setOf("org.jetbrains.kotlin:kotlin-stdlib", "org.jetbrains:annotations")
+    val classpaths = listOf("debugRuntimeClasspath", "releaseRuntimeClasspath").map { configurations.named(it) }
+    doLast {
+        for (classpath in classpaths) {
+            val modules = classpath.get().incoming.resolutionResult.allComponents
+                .map { it.id }
+                .filterIsInstance<org.gradle.api.artifacts.component.ModuleComponentIdentifier>()
+                .map { "${it.group}:${it.module}" }
+                .toSortedSet()
+            if ("org.jetbrains.kotlin:kotlin-stdlib" !in modules) {
+                throw GradleException("${classpath.name}: no Kotlin standard library found; is this the right classpath?")
+            }
+            val extra = modules - allowed
+            if (extra.isNotEmpty()) {
+                throw GradleException("${classpath.name} packages libraries ADR-0004 doesn't allow: $extra")
+            }
+            println("${classpath.name}: $modules")
+        }
+    }
+}
