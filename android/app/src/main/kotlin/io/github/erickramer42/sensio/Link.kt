@@ -132,6 +132,8 @@ class Link(
     private val context: Context,
     private val line: (source: String, receiver: String, remoteNs: Long, raw: String) -> Unit,
     private val offset: (receiver: String, offsetNs: Long, uncertaintyNs: Long) -> Unit,
+    /** The link to [receiver] came up, or went down; the session writes it as a `radio` line. */
+    private val linked: (receiver: String, up: Boolean) -> Unit,
 ) {
     private var code = ""
     private var on = false
@@ -249,6 +251,7 @@ class Link(
             send(output, LinkProtocol.welcome())
         }
         Live.link("Laptop: linked ($receiver)")
+        linked(receiver, true)
         socket.soTimeout = SILENT_MS
 
         val pings = ConcurrentHashMap<Long, Long>()
@@ -294,6 +297,7 @@ class Link(
         } finally {
             runCatching { socket.close() }
             pinger.interrupt()
+            linked(receiver, false)
         }
     }
 

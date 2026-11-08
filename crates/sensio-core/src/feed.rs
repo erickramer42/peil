@@ -7,6 +7,7 @@
 //! the app writes are still untrusted: a saved file can be edited, and a
 //! source's `raw` text came from a radio.
 
+use std::collections::BTreeMap;
 use std::io::{self, BufRead};
 
 use serde::{Deserialize, Serialize};
@@ -110,6 +111,63 @@ pub enum FeedLine {
         /// How long it slept, nanoseconds.
         slept_ns: TimeNs,
     },
+    /// A radio's state changed: from here on it's in `state` (ADR-0005,
+    /// amended 2026-11-07).
+    Radio {
+        /// When, on the boot clock.
+        boot_ns: TimeNs,
+        /// Which radio (`wifi`, `ble`, `gnss`, `bt_classic`, `link`, ...).
+        radio: String,
+        /// The receiver it belongs to, if known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        receiver: Option<String>,
+        /// Its state from now on.
+        state: RadioState,
+    },
+}
+
+/// A radio's state, as the app reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RadioState {
+    /// Receiving everything it can.
+    On,
+    /// Receiving only part of what it could, such as BLE's screen-off
+    /// filters (ADR-0004).
+    Filtered,
+    /// Turned off, by the user or the system.
+    Off,
+    /// Asked to receive and refused, such as a failed BLE scan or a
+    /// throttled Wi-Fi scan.
+    Failed,
+}
+
+/// One radio's state and the time it spent short of `on`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RadioCoverage {
+    /// The radio.
+    pub radio: String,
+    /// Its receiver, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receiver: Option<String>,
+    /// Its latest state.
+    pub state: RadioState,
+    /// When it entered that state, on the boot clock.
+    pub since_boot_ns: TimeNs,
+    /// Time spent `filtered`, nanoseconds, up to the coverage line's time.
+    pub filtered_ns: TimeNs,
+    /// Time spent `off` or `failed`, nanoseconds, up to the coverage line's
+    /// time.
+    pub lost_ns: TimeNs,
+}
+
+/// One event kind's count from a source and receiver.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct KindCoverage {
+    /// Events of this kind.
+    pub events: u64,
+    /// The latest one's line arrival, on the boot clock.
+    pub last_boot_ns: TimeNs,
 }
 
 /// Counts for one source and receiver.
@@ -130,13 +188,27 @@ pub struct SourceCoverage {
     pub withheld: u64,
     /// Lines the app couldn't pass to the core, as it reported.
     pub dropped: u64,
+    /// The latest line's arrival, on the boot clock.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_boot_ns: Option<TimeNs>,
+    /// The events by kind (`ble_advert`, `wifi_ap`, ...), ordered by kind.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub kinds: BTreeMap<&'static str, KindCoverage>,
 }
 
 /// What a session covered so far.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Coverage {
+    /// The time it covers up to, on the boot clock: the `judge` line's, or at
+    /// the end the latest time the feed gave.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boot_ns: Option<TimeNs>,
     /// Per source and receiver, ordered by both.
     pub sources: Vec<SourceCoverage>,
+    /// Per radio and receiver, ordered by both; empty when the feed reported
+    /// no radio's state.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub radios: Vec<RadioCoverage>,
     /// Feed lines rejected before any source could be named.
     pub feed_rejected: u64,
     /// A torn last line, dropped.

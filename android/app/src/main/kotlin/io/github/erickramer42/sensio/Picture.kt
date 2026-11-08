@@ -23,9 +23,6 @@ class Emitter(
 /** The emitter picture at one moment, loud first, as the core described it. */
 class Picture(val movement: String, val emitters: List<Emitter>, val older: Long, val recentS: Long)
 
-/** Lines and events per source, and time asleep, from the core's `coverage` line. */
-class Coverage(val lines: Long, val events: Long, val rejected: Long, val withheld: Long, val dropped: Long, val sleptS: Long)
-
 /** The verdict stream's lines the display uses. Other types are skipped, as ADR-0005 says readers do. */
 object VerdictStream {
     fun parse(line: String): Any? {
@@ -73,6 +70,7 @@ object VerdictStream {
         var rejected = 0L
         var withheld = 0L
         var dropped = 0L
+        val lastArrival = HashMap<String, HashMap<String, Long>>()
         for (i in 0 until (sources?.length() ?: 0)) {
             val s = sources!!.getJSONObject(i)
             lines += s.optLong("lines")
@@ -80,8 +78,31 @@ object VerdictStream {
             rejected += s.optLong("rejected")
             withheld += s.optLong("withheld")
             dropped += s.optLong("dropped")
+            val receiver = s.text("receiver") ?: s.optString("source")
+            val kinds = s.optJSONObject("kinds") ?: continue
+            val byKind = lastArrival.getOrPut(receiver) { HashMap() }
+            for (kind in kinds.keys()) {
+                val last = kinds.optJSONObject(kind)?.optLong("last_boot_ns") ?: continue
+                byKind.merge(kind, last, ::maxOf)
+            }
         }
-        return Coverage(lines, events, rejected, withheld, dropped, o.optLong("slept_ns") / 1_000_000_000L)
+        val list = o.optJSONArray("radios")
+        val radios = (0 until (list?.length() ?: 0)).map { i ->
+            val r = list!!.getJSONObject(i)
+            RadioCoverage(
+                radio = r.optString("radio"),
+                receiver = r.text("receiver") ?: "",
+                state = r.optString("state"),
+                filteredS = r.optLong("filtered_ns") / 1_000_000_000L,
+                lostS = r.optLong("lost_ns") / 1_000_000_000L,
+            )
+        }
+        return Coverage(
+            lines, events, rejected, withheld, dropped, o.optLong("slept_ns") / 1_000_000_000L,
+            bootNs = if (o.has("boot_ns")) o.optLong("boot_ns") else null,
+            lastArrival = lastArrival,
+            radios = radios,
+        )
     }
 }
 

@@ -7,6 +7,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
@@ -59,6 +60,8 @@ class SessionService : Service() {
     private var gnssClockAtMs: Long? = null
     private var bleFiltered = false
     private val wifiSeen = HashMap<String, Long>()
+    /** Each radio's last state written, by radio and receiver. */
+    private val radios = HashMap<Pair<String, String>, Feed.RadioState>()
 
     private val bleCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -67,7 +70,11 @@ class SessionService : Service() {
 
         override fun onBatchScanResults(results: MutableList<ScanResult>) = results.forEach { onScanResult(0, it) }
 
-        override fun onScanFailed(errorCode: Int) = Live.status("BLE scan failed (code $errorCode)")
+        override fun onScanFailed(errorCode: Int) {
+            bleRunning = false
+            radio("ble", Feed.RadioState.FAILED)
+            Live.status("BLE scan failed (code $errorCode)")
+        }
     }
 
     private val wifiReceiver = object : BroadcastReceiver() {
@@ -78,7 +85,31 @@ class SessionService : Service() {
         override fun onReceive(context: Context, intent: Intent) = startBle(filtered = intent.action == Intent.ACTION_SCREEN_OFF)
     }
 
-    private val locationListener = LocationListener { location -> fix(location) }
+    private val locationListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) = fix(location)
+
+        override fun onProviderEnabled(provider: String) {
+            if (provider == LocationManager.GPS_PROVIDER) radio("gnss", Feed.RadioState.ON)
+        }
+
+        override fun onProviderDisabled(provider: String) {
+            if (provider == LocationManager.GPS_PROVIDER) radio("gnss", Feed.RadioState.OFF)
+        }
+    }
+
+    /** Bluetooth turned off stops both scans; turned on again, BLE scanning starts over. */
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
+                BluetoothAdapter.STATE_OFF -> {
+                    bleRunning = false
+                    radio("ble", Feed.RadioState.OFF)
+                    radio("bt_classic", Feed.RadioState.OFF)
+                }
+                BluetoothAdapter.STATE_ON -> startBle(filtered = !getSystemService(PowerManager::class.java).isInteractive)
+            }
+        }
+    }
 
     private val classicReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -103,9 +134,13 @@ class SessionService : Service() {
         override fun run() {
             val adapter = getSystemService(BluetoothManager::class.java).adapter
             val allowed = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
-            if (Options.classic(this@SessionService) && allowed && adapter != null && !adapter.isDiscovering) {
-                runCatching { adapter.startDiscovery() }
+            val state = when {
+                !Options.classic(this@SessionService) || !allowed || adapter == null || !adapter.isEnabled -> Feed.RadioState.OFF
+                adapter.isDiscovering -> Feed.RadioState.ON
+                runCatching { adapter.startDiscovery() }.getOrDefault(false) -> Feed.RadioState.ON
+                else -> Feed.RadioState.FAILED
             }
+            radio("bt_classic", state)
             handler.postDelayed(this, CLASSIC_EVERY_MS)
         }
     }
@@ -124,8 +159,11 @@ class SessionService : Service() {
 
     private val wifiScan = object : Runnable {
         override fun run() {
+            // Android refuses a scan while it's throttling them, or with Wi-Fi
+            // and its always-available scanning both off.
             @Suppress("DEPRECATION")
-            getSystemService(WifiManager::class.java).startScan()
+            val asked = runCatching { getSystemService(WifiManager::class.java).startScan() }.getOrDefault(false)
+            radio("wifi", if (asked) Feed.RadioState.ON else Feed.RadioState.FAILED)
             handler.postDelayed(this, WIFI_EVERY_MS)
         }
     }
@@ -163,16 +201,19 @@ class SessionService : Service() {
             handler,
         )
         startBle(filtered = !getSystemService(PowerManager::class.java).isInteractive)
+        registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), null, handler)
         registerReceiver(classicReceiver, IntentFilter(BluetoothDevice.ACTION_FOUND), null, handler)
         handler.post(classicScan)
         handler.post(wifiScan)
-        getSystemService(LocationManager::class.java)
-            .requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, locationListener, worker.looper)
+        val location = getSystemService(LocationManager::class.java)
+        location.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, locationListener, worker.looper)
+        radio("gnss", if (location.isProviderEnabled(LocationManager.GPS_PROVIDER)) Feed.RadioState.ON else Feed.RadioState.OFF)
         handler.postDelayed(tick, JUDGE_EVERY_MS)
         link = Link(
             this,
             line = { source, receiver, remoteNs, raw -> data(raw, source, receiver, remoteNs) },
             offset = { receiver, offsetNs, uncertaintyNs -> control(Feed.offset(receiver, offsetNs, uncertaintyNs)) },
+            linked = { receiver, up -> radio("link", if (up) Feed.RadioState.ON else Feed.RadioState.OFF, receiver) },
         )
         val throttle = if (wifi.isScanThrottleEnabled) "on (4 scans per 2 minutes)" else "off"
         if (core != null) Live.status("Session running; Wi-Fi scan throttling $throttle", running = true)
@@ -187,6 +228,7 @@ class SessionService : Service() {
     private fun startBle(filtered: Boolean) {
         val scanner = getSystemService(BluetoothManager::class.java).adapter?.bluetoothLeScanner
         if (scanner == null) {
+            radio("ble", Feed.RadioState.OFF)
             Live.status("No BLE scanner (is Bluetooth off?)")
             return
         }
@@ -201,9 +243,14 @@ class SessionService : Service() {
                 }
         }
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-        scanner.startScan(filters, settings, bleCallback)
+        if (runCatching { scanner.startScan(filters, settings, bleCallback) }.isFailure) {
+            bleRunning = false
+            radio("ble", Feed.RadioState.FAILED)
+            return
+        }
         bleRunning = true
         bleFiltered = filtered
+        radio("ble", if (filtered) Feed.RadioState.FILTERED else Feed.RadioState.ON)
         if (filtered) Live.status("Screen off: BLE sees only the listed manufacturers and tracker services")
     }
 
@@ -246,9 +293,23 @@ class SessionService : Service() {
      * core saw.
      */
     @Synchronized
-    private fun control(line: String) {
+    private fun control(line: String): Boolean {
         val c = core
-        if (c == null || c.offer(line)) write(line)
+        if (c != null && !c.offer(line)) return false
+        write(line)
+        return true
+    }
+
+    /**
+     * A radio's state, written when it changes (ADR-0005). One the core
+     * couldn't take is forgotten, so the next report writes it again.
+     */
+    @Synchronized
+    private fun radio(name: String, state: Feed.RadioState, receiver: String = Feed.RECEIVER) {
+        if (file == null) return
+        val key = Pair(name, receiver)
+        if (radios.put(key, state) == state) return
+        if (!control(Feed.radio(SystemClock.elapsedRealtimeNanos(), name, state, receiver))) radios.remove(key)
     }
 
     /**
@@ -356,6 +417,7 @@ class SessionService : Service() {
             runCatching { unregisterReceiver(wifiReceiver) }
             runCatching { unregisterReceiver(screenReceiver) }
             runCatching { unregisterReceiver(classicReceiver) }
+            runCatching { unregisterReceiver(bluetoothReceiver) }
             runCatching { getSystemService(BluetoothManager::class.java).adapter?.cancelDiscovery() }
             runCatching { getSystemService(LocationManager::class.java).removeUpdates(locationListener) }
             synchronized(this) {

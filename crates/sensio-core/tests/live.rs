@@ -13,8 +13,8 @@ use std::io::{BufRead, BufReader, Cursor};
 use proptest::prelude::*;
 use sensio_core::event::reason_without_values;
 use sensio_core::feed::{
-    BoundedLine, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, VERDICTS_SCHEMA, VerdictLine,
-    read_bounded_line,
+    BoundedLine, Coverage, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, RadioState, VERDICTS_SCHEMA,
+    VerdictLine, read_bounded_line,
 };
 use sensio_core::{
     Event, EventKind, Fatal, Live, Normalize, PersistenceRule, RunError, Verdict, judge,
@@ -554,4 +554,121 @@ fn a_line_that_isnt_utf8_is_rejected() {
     )
     .expect("the feed is judged");
     assert_eq!(rejections(&out), [(3, None, "not UTF-8")]);
+}
+
+fn radio(boot_ns: i64, radio: &str, state: &str) -> String {
+    format!(
+        r#"{{"type":"radio","boot_ns":{boot_ns},"radio":"{radio}","receiver":"phone","state":"{state}"}}"#
+    )
+}
+
+fn judge_at(boot_ns: i64) -> String {
+    format!(r#"{{"type":"judge","boot_ns":{boot_ns}}}"#)
+}
+
+/// Every coverage line in the stream, the final one last.
+fn coverages(lines: &[VerdictLine]) -> Vec<&Coverage> {
+    lines
+        .iter()
+        .filter_map(|line| match line {
+            VerdictLine::Coverage(coverage) => Some(coverage),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_radios_filtered_and_lost_time_counts_up_to_each_answer() {
+    let s = 1_000_000_000;
+    let lines = live(
+        &feed(&[
+            radio(0, "ble", "on"),
+            radio(10 * s, "ble", "filtered"),
+            judge_at(25 * s),
+            radio(40 * s, "ble", "on"),
+            radio(50 * s, "ble", "off"),
+            radio(55 * s, "ble", "failed"),
+            judge_at(60 * s),
+        ]),
+        false,
+    );
+    assert!(rejections(&lines).is_empty(), "{lines:?}");
+    let seen: Vec<_> = coverages(&lines)
+        .iter()
+        .map(|c| {
+            let ble = &c.radios[0];
+            (
+                c.boot_ns,
+                ble.state,
+                ble.since_boot_ns,
+                ble.filtered_ns,
+                ble.lost_ns,
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            (Some(25 * s), RadioState::Filtered, 10 * s, 15 * s, 0),
+            (Some(60 * s), RadioState::Failed, 55 * s, 30 * s, 10 * s),
+            // The end covers up to the latest time the feed gave.
+            (Some(60 * s), RadioState::Failed, 55 * s, 30 * s, 10 * s),
+        ]
+    );
+}
+
+#[test]
+fn a_radio_line_that_goes_back_or_names_badly_is_rejected() {
+    let lines = live(
+        &feed(&[
+            radio(10, "ble", "on"),
+            radio(5, "ble", "off"),
+            radio(-1, "wifi", "on"),
+            radio(0, "bad name", "on"),
+            r#"{"type":"radio","boot_ns":0,"radio":"ble","receiver":"no good","state":"on"}"#
+                .to_owned(),
+        ]),
+        false,
+    );
+    assert_eq!(
+        rejections(&lines),
+        [
+            (4, None, "radio time goes back"),
+            (5, None, "radio time out of range"),
+            (6, None, "radio or receiver isn't a valid name"),
+            (7, None, "radio or receiver isn't a valid name"),
+        ]
+    );
+    let end = coverages(&lines)[0];
+    assert_eq!(end.radios.len(), 1);
+    assert_eq!(end.radios[0].state, RadioState::On);
+}
+
+#[test]
+fn an_unknown_radio_state_is_rejected() {
+    let lines = live(&feed(&[radio(0, "ble", "sideways")]), false);
+    assert_eq!(rejections(&lines).len(), 1);
+    assert!(coverages(&lines)[0].radios.is_empty(), "{lines:?}");
+}
+
+#[test]
+fn coverage_gives_each_kinds_latest_arrival() {
+    let gnss = r#"{"kind":"gnss_fix","lat_deg":60.01,"lon_deg":10.01}"#;
+    let lines = live(
+        &feed(&[
+            // A later line can carry an earlier arrival; the latest counts.
+            line(1, 9, None, BLE),
+            line(2, 7, None, gnss),
+            line(3, 8, None, BLE),
+        ]),
+        false,
+    );
+    let source = &coverages(&lines)[0].sources[0];
+    assert_eq!(source.last_boot_ns, Some(9));
+    let kinds: Vec<_> = source
+        .kinds
+        .iter()
+        .map(|(kind, k)| (*kind, k.events, k.last_boot_ns))
+        .collect();
+    assert_eq!(kinds, [("ble_advert", 2, 9), ("gnss_fix", 1, 7)]);
 }

@@ -1,6 +1,6 @@
 # ADR-0005: The live feed and the verdict stream
 
-Status: Accepted. Built: the feed and verdict-stream formats, `peil live`, and the `sensio` source's normalizer. Not yet built: the Android and Kismet normalizers, and an `end` for an interrupted stream.
+Status: Accepted. Built: the feed and verdict-stream formats with the `radio` line and per-radio coverage, `peil live`, and the `sensio`, `android` and `kismet` normalizers. Not yet built: an `end` for an interrupted stream.
 
 ## Context
 
@@ -19,6 +19,8 @@ ADR-0004 runs the core as a process inside the Android app, fed raw lines over s
    - `dropped`: how many lines, per source, the core didn't get (item 5).
    - `slept`: time the phone slept, as lost coverage.
 
+   Amended 2026-11-07: a `radio` line, written when a radio's state changes: its `boot_ns`, the `radio` (`wifi`, `ble`, `gnss`, `bt_classic`, or `link` for a laptop's link), its `receiver`, and its `state`: `on`, `filtered` (part of what it could receive, such as BLE's screen-off filters, ADR-0004), `off`, or `failed` (asked to receive and refused, such as a failed BLE scan or a refused Wi-Fi scan). A radio's time can't go back; a `radio` line that does is rejected. It records the reduced and lost coverage ADR-0004 asks for in the feed, so a replay shows it as the live session did.
+
 3. **Event times.** A normalized event's `t_ns` is its line's arrival mapped to UTC: `remote_ns` through the receiver's latest `offset` when present, otherwise `boot_ns` through the latest `clock`. A source's own timestamps are used only for spacing within that source, never as the session clock (ADR-0002 section 3).
 
 4. **Judging.** Each `judge` line runs the existing judge over every normalized event so far and answers with the full current verdict set, not a difference from the last one. A property test holds that the answer to every `judge` equals `judge()` over the events before it; an incremental judge may replace the re-run only by passing the same test. Nothing about the judge itself changes.
@@ -29,7 +31,7 @@ ADR-0004 runs the core as a process inside the Android app, fed raw lines over s
    - `start`: the schema, the core's version and `RULE_SET_VERSION`.
    - `verdicts`: the `judge` it answers (its position in the feed) and the full verdict set.
    - `rejected`: a line that couldn't be normalized, by its `seq`, with the reason and never its values; it is counted and skipped, and the stream goes on.
-   - `coverage`: per source and receiver, the lines seen, rejected, withheld and dropped, and time asleep.
+   - `coverage`: per source and receiver, the lines seen, rejected, withheld and dropped, and time asleep. Amended 2026-11-07: also the time it covers up to (the `judge` line's `boot_ns`, or at the end the feed's latest), each source's latest arrival overall and by event kind, and each radio's state, when it entered it, and its time `filtered` and lost (`off` or `failed`) so far.
    - `end`, the last line: why the stream ended (input closed, interrupted) and the totals.
 
    Amended 2026-11-07: an `emitters` line, the emitter picture at that moment (ADR-0006), comes before each `verdicts` line. Readers skip line types they don't know, so a new line type is an additive change.

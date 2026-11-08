@@ -11,12 +11,19 @@ use std::collections::BTreeMap;
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sensio_core::event::is_label;
-use sensio_core::feed::{ClockBasis, FEED_SCHEMA, FeedLine, VerdictLine};
+use sensio_core::feed::{ClockBasis, FEED_SCHEMA, FeedLine, RadioState, VerdictLine};
 use sensio_core::{Event, EventKind, Live, TimeNs, Verdict, judge, run};
 use sensio_fuzz::{Kind, Rule, Time};
 use sensio_sources::Sources;
 
 const RECEIVERS: [&str; 5] = ["phone", "thinkpad", "rear-pi", "Rear Pi", ""];
+const RADIOS: [&str; 4] = ["ble", "wifi", "gnss", "no good"];
+const STATES: [RadioState; 4] = [
+    RadioState::On,
+    RadioState::Filtered,
+    RadioState::Off,
+    RadioState::Failed,
+];
 const BOOT_TO_UTC: TimeNs = 1_799_999_998_000_000_000;
 const MAX_OPS: usize = 500;
 
@@ -56,6 +63,7 @@ enum Op {
     Judge(Time),
     Dropped(Option<u8>, u64),
     Slept(Time, i64),
+    Radio(Time, u8, Option<u8>, u8),
     /// Never a feed line: it starts with '#'.
     Garbage(Vec<u8>),
     Blank(u8),
@@ -77,6 +85,8 @@ struct Model {
     events: Vec<Event>,
     rejected: usize,
     answers: Vec<Vec<Verdict>>,
+    /// Each radio's state and when it entered it.
+    radios: BTreeMap<(String, Option<String>), (RadioState, TimeNs)>,
 }
 
 impl Model {
@@ -234,6 +244,26 @@ fuzz_target!(|session: Session| {
                     slept_ns: *slept_ns,
                 })
             }
+            Op::Radio(boot, r, rx, state) => {
+                let boot_ns = boot.at(&mut cursor);
+                let radio = RADIOS[usize::from(*r) % RADIOS.len()].to_owned();
+                let receiver = rx.map(receiver);
+                let state = STATES[usize::from(*state) % STATES.len()];
+                let key = (radio.clone(), receiver.clone());
+                let named = is_label(&radio) && receiver.as_deref().is_none_or(is_label);
+                let back = model.radios.get(&key).is_some_and(|&(_, since)| boot_ns < since);
+                if !named || boot_ns < 0 || back {
+                    model.rejected += 1;
+                } else {
+                    model.radios.insert(key, (state, boot_ns));
+                }
+                json(&FeedLine::Radio {
+                    boot_ns,
+                    radio,
+                    receiver,
+                    state,
+                })
+            }
             Op::Garbage(bytes) => {
                 model.rejected += 1;
                 let mut line = vec![b'#'];
@@ -303,4 +333,13 @@ fuzz_target!(|session: Session| {
         panic!("no final coverage");
     };
     assert_eq!(coverage.torn, u64::from(torn.is_some()));
+    let radios: BTreeMap<_, _> = coverage
+        .radios
+        .iter()
+        .map(|r| ((r.radio.clone(), r.receiver.clone()), (r.state, r.since_boot_ns)))
+        .collect();
+    assert_eq!(radios, model.radios, "radio states differ from the model's");
+    for r in &coverage.radios {
+        assert!(r.filtered_ns >= 0 && r.lost_ns >= 0, "a radio's time is negative");
+    }
 });

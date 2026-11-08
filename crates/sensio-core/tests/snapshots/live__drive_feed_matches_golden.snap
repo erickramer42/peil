@@ -5,6 +5,7 @@ expression: "lines[1..]"
 [
   {
     "type": "coverage",
+    "boot_ns": 607000000000,
     "sources": [
       {
         "source": "sensio",
@@ -12,7 +13,22 @@ expression: "lines[1..]"
         "events": 9,
         "rejected": 0,
         "withheld": 0,
-        "dropped": 0
+        "dropped": 0,
+        "last_boot_ns": 606000000000,
+        "kinds": {
+          "ble_advert": {
+            "events": 5,
+            "last_boot_ns": 605000000000
+          },
+          "gnss_fix": {
+            "events": 2,
+            "last_boot_ns": 602000000000
+          },
+          "tpms": {
+            "events": 2,
+            "last_boot_ns": 606000000000
+          }
+        }
       }
     ],
     "feed_rejected": 0,
@@ -89,6 +105,7 @@ expression: "lines[1..]"
   },
   {
     "type": "coverage",
+    "boot_ns": 1207000000000,
     "sources": [
       {
         "source": "sensio",
@@ -96,7 +113,22 @@ expression: "lines[1..]"
         "events": 12,
         "rejected": 0,
         "withheld": 0,
-        "dropped": 0
+        "dropped": 0,
+        "last_boot_ns": 1206000000000,
+        "kinds": {
+          "ble_advert": {
+            "events": 6,
+            "last_boot_ns": 1203000000000
+          },
+          "gnss_fix": {
+            "events": 3,
+            "last_boot_ns": 1202000000000
+          },
+          "tpms": {
+            "events": 3,
+            "last_boot_ns": 1206000000000
+          }
+        }
       }
     ],
     "feed_rejected": 0,
@@ -209,6 +241,7 @@ expression: "lines[1..]"
   },
   {
     "type": "coverage",
+    "boot_ns": 1903000000000,
     "sources": [
       {
         "source": "sensio",
@@ -216,7 +249,22 @@ expression: "lines[1..]"
         "events": 14,
         "rejected": 0,
         "withheld": 1,
-        "dropped": 1
+        "dropped": 1,
+        "last_boot_ns": 1902000000000,
+        "kinds": {
+          "ble_advert": {
+            "events": 7,
+            "last_boot_ns": 1902000000000
+          },
+          "gnss_fix": {
+            "events": 4,
+            "last_boot_ns": 1802000000000
+          },
+          "tpms": {
+            "events": 3,
+            "last_boot_ns": 1206000000000
+          }
+        }
       }
     ],
     "feed_rejected": 0,
@@ -312,6 +360,7 @@ expression: "lines[1..]"
   },
   {
     "type": "coverage",
+    "boot_ns": 1903000000000,
     "sources": [
       {
         "source": "sensio",
@@ -319,7 +368,22 @@ expression: "lines[1..]"
         "events": 14,
         "rejected": 0,
         "withheld": 1,
-        "dropped": 1
+        "dropped": 1,
+        "last_boot_ns": 1902000000000,
+        "kinds": {
+          "ble_advert": {
+            "events": 7,
+            "last_boot_ns": 1902000000000
+          },
+          "gnss_fix": {
+            "events": 4,
+            "last_boot_ns": 1802000000000
+          },
+          "tpms": {
+            "events": 3,
+            "last_boot_ns": 1206000000000
+          }
+        }
       }
     ],
     "feed_rejected": 0,

@@ -47,6 +47,19 @@ class FeedTest {
     }
 
     @Test
+    fun aRadioLineNamesItsStateAsTheCoreDoes() {
+        // The same text the core's live tests feed it.
+        assertEquals(
+            """{"type":"radio","boot_ns":10,"radio":"ble","receiver":"phone","state":"filtered"}""",
+            Feed.radio(10, "ble", Feed.RadioState.FILTERED),
+        )
+        assertEquals(
+            """{"type":"radio","boot_ns":3,"radio":"link","receiver":"laptop","state":"off"}""",
+            Feed.radio(3, "link", Feed.RadioState.OFF, receiver = "laptop"),
+        )
+    }
+
+    @Test
     fun aLaptopLineCarriesItsSourceReceiverAndOwnStampAndItsOffsetLineThePair() {
         assertEquals(
             """{"type":"line","seq":5,"boot_ns":6,"source":"kismet","receiver":"laptop","remote_ns":7,"raw":"{}","withheld":true}""",

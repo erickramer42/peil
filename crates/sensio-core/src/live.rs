@@ -11,8 +11,8 @@ use std::io::{self, BufRead};
 use crate::describe::{DESCRIBE_VERSION, DescribeParams, VendorTable, describe};
 use crate::event::{Event, EventKind, TimeNs, is_label, reason_without_values};
 use crate::feed::{
-    BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, SourceCoverage,
-    VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
+    BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, RadioCoverage,
+    RadioState, SourceCoverage, VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
 };
 use crate::judge::{PersistenceRule, RULE_SET_VERSION, judge};
 
@@ -110,6 +110,8 @@ pub struct Live<N> {
     offsets: BTreeMap<String, TimeNs>,
     events: Vec<Event>,
     sources: BTreeMap<(String, Option<String>), SourceCoverage>,
+    radios: BTreeMap<(String, Option<String>), RadioCoverage>,
+    latest_boot_ns: Option<TimeNs>,
     feed_rejected: u64,
     torn: u64,
     slept_ns: TimeNs,
@@ -134,6 +136,8 @@ impl<N: Normalize> Live<N> {
             offsets: BTreeMap::new(),
             events: Vec::new(),
             sources: BTreeMap::new(),
+            radios: BTreeMap::new(),
+            latest_boot_ns: None,
             feed_rejected: 0,
             torn: 0,
             slept_ns: 0,
@@ -238,7 +242,7 @@ impl<N: Normalize> Live<N> {
             return Err(Fatal::Empty);
         }
         Ok(vec![
-            VerdictLine::Coverage(self.coverage()),
+            VerdictLine::Coverage(self.coverage(self.latest_boot_ns)),
             VerdictLine::End {
                 reason: EndReason::InputClosed,
                 feed_lines: self.feed_lines,
@@ -259,6 +263,7 @@ impl<N: Normalize> Live<N> {
                 if boot_ns < 0 || utc_ns < 0 {
                     return reject(self, "clock time out of range");
                 }
+                self.saw(boot_ns);
                 self.clock = Some((boot_ns, utc_ns));
                 Vec::new()
             }
@@ -291,6 +296,7 @@ impl<N: Normalize> Live<N> {
                 if boot_ns < 0 {
                     return reject(self, "judge time out of range");
                 }
+                self.saw(boot_ns);
                 self.judged += 1;
                 // The answer's time: its arrival through the clock, or, before
                 // any clock line, the latest event's.
@@ -299,7 +305,7 @@ impl<N: Normalize> Live<N> {
                     .or_else(|| self.events.iter().map(|e| e.t_ns).max())
                     .unwrap_or(0);
                 vec![
-                    VerdictLine::Coverage(self.coverage()),
+                    VerdictLine::Coverage(self.coverage(Some(boot_ns))),
                     VerdictLine::Emitters {
                         judge_line: feed_line,
                         describe_version: DESCRIBE_VERSION,
@@ -332,10 +338,66 @@ impl<N: Normalize> Live<N> {
                 if boot_ns < 0 || slept_ns < 0 {
                     return reject(self, "sleep time out of range");
                 }
+                self.saw(boot_ns);
                 self.slept_ns = self.slept_ns.saturating_add(slept_ns);
                 Vec::new()
             }
+            FeedLine::Radio {
+                boot_ns,
+                radio,
+                receiver,
+                state,
+            } => match self.apply_radio(boot_ns, radio, receiver, state) {
+                Ok(()) => Vec::new(),
+                Err(reason) => reject(self, reason),
+            },
         }
+    }
+
+    /// A radio's state change: the time in the state it leaves goes to that
+    /// state's total.
+    fn apply_radio(
+        &mut self,
+        boot_ns: TimeNs,
+        radio: String,
+        receiver: Option<String>,
+        state: RadioState,
+    ) -> Result<(), &'static str> {
+        if !is_label(&radio) || receiver.as_deref().is_some_and(|r| !is_label(r)) {
+            return Err("radio or receiver isn't a valid name");
+        }
+        if boot_ns < 0 {
+            return Err("radio time out of range");
+        }
+        let key = (radio, receiver);
+        if let Some(track) = self.radios.get_mut(&key) {
+            if boot_ns < track.since_boot_ns {
+                return Err("radio time goes back");
+            }
+            close_interval(track, boot_ns);
+            track.state = state;
+            track.since_boot_ns = boot_ns;
+        } else {
+            let (radio, receiver) = key.clone();
+            self.radios.insert(
+                key,
+                RadioCoverage {
+                    radio,
+                    receiver,
+                    state,
+                    since_boot_ns: boot_ns,
+                    filtered_ns: 0,
+                    lost_ns: 0,
+                },
+            );
+        }
+        self.saw(boot_ns);
+        Ok(())
+    }
+
+    /// Notes a valid boot-clock time the feed gave, for the final coverage.
+    fn saw(&mut self, boot_ns: TimeNs) {
+        self.latest_boot_ns = Some(self.latest_boot_ns.map_or(boot_ns, |t| t.max(boot_ns)));
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -402,7 +464,15 @@ impl<N: Normalize> Live<N> {
             self.entry(key.0, key.1).rejected += 1;
             return rejected(reason);
         }
-        self.entry(key.0, key.1).events += events.len() as u64;
+        self.saw(boot_ns);
+        let entry = self.entry(key.0, key.1);
+        entry.events += events.len() as u64;
+        entry.last_boot_ns = Some(entry.last_boot_ns.map_or(boot_ns, |t| t.max(boot_ns)));
+        for event in &events {
+            let kind = entry.kinds.entry(event.kind.name()).or_default();
+            kind.events += 1;
+            kind.last_boot_ns = kind.last_boot_ns.max(boot_ns);
+        }
         self.events.extend(events);
         Vec::new()
     }
@@ -446,12 +516,40 @@ impl<N: Normalize> Live<N> {
             })
     }
 
-    fn coverage(&self) -> Coverage {
+    /// What the session covered, with each radio's open interval counted up
+    /// to `boot_ns`.
+    fn coverage(&self, boot_ns: Option<TimeNs>) -> Coverage {
+        let radios = self
+            .radios
+            .values()
+            .map(|track| {
+                let mut track = track.clone();
+                if let Some(now) = boot_ns {
+                    close_interval(&mut track, now);
+                }
+                track
+            })
+            .collect();
         Coverage {
+            boot_ns,
             sources: self.sources.values().cloned().collect(),
+            radios,
             feed_rejected: self.feed_rejected,
             torn: self.torn,
             slept_ns: self.slept_ns,
+        }
+    }
+}
+
+/// Adds the time from `track`'s state change up to `now` to that state's
+/// total; a `now` before the change adds nothing.
+fn close_interval(track: &mut RadioCoverage, now: TimeNs) {
+    let spent = now.saturating_sub(track.since_boot_ns).max(0);
+    match track.state {
+        RadioState::On => {}
+        RadioState::Filtered => track.filtered_ns = track.filtered_ns.saturating_add(spent),
+        RadioState::Off | RadioState::Failed => {
+            track.lost_ns = track.lost_ns.saturating_add(spent);
         }
     }
 }

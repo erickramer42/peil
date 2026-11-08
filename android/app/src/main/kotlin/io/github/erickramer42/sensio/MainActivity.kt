@@ -140,6 +140,7 @@ class MainActivity : Activity() {
                 if (hidden > 0) append("; $hidden of yours not shown")
             }
             if (coverage != null) {
+                CoverageText.lines(coverage).forEach { append('\n').append(it) }
                 append("\n${coverage.lines} lines, ${coverage.events} events, ${coverage.rejected} rejected")
                 if (coverage.withheld + coverage.dropped > 0) append(", ${coverage.dropped} not passed to the core")
                 if (coverage.sleptS > 0) append(", asleep ${coverage.sleptS} s")

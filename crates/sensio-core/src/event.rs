@@ -179,6 +179,19 @@ impl fmt::Display for DeviceId {
 }
 
 impl EventKind {
+    /// The kind's name, as its `kind` field in the JSON form.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::BleAdvert { .. } => "ble_advert",
+            Self::BtClassic { .. } => "bt_classic",
+            Self::Tpms { .. } => "tpms",
+            Self::WifiAp { .. } => "wifi_ap",
+            Self::WifiClient { .. } => "wifi_client",
+            Self::GnssFix { .. } => "gnss_fix",
+        }
+    }
+
     /// The device this event saw, or `None` for an event that isn't a sighting.
     #[must_use]
     pub fn device(&self) -> Option<DeviceId> {
