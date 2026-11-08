@@ -4,7 +4,7 @@ Peil reads input that strangers control: every BLE advertisement, tire-pressure 
 
 ## Supported versions
 
-Peil is an early scaffold with no releases yet. Fixes go to the `main` branch only.
+Peil is an early scaffold. Only the latest release is supported: fixes go to the `main` branch and into the next release.
 
 ## Reporting a vulnerability
 
@@ -22,7 +22,7 @@ Reports are read as they arrive. There is no fixed response time, but you'll get
 
 ## In scope
 
-- **Hostile input:** anything a transmission, a sensor program's output or a file of events can do to Peil beyond being rejected: a panic, an integer overflow, a hang, an allocation without a size check, or a parser that accepts what it should refuse.
+- **Hostile input:** anything a transmission, a sensor program's output, a file of events or a peer on the app's laptop link (its port on the USB tether) can do to Peil beyond being rejected: a panic, an integer overflow, a hang, an allocation without a size check, or a parser that accepts what it should refuse.
 - **Wrong verdicts from crafted input:** input that makes a device the rules should flag go unflagged, or makes the same input give different verdicts.
 - **Personal data leaving its place:** an error message, log line, export or verdict that exposes a device identifier, a position or a timestamp it shouldn't, such as an error that repeats a rejected value.
 - **Dependencies and CI:** a vulnerable dependency Peil uses in a way that matters, or a weakness in its GitHub Actions workflow.
