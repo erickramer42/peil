@@ -2,14 +2,13 @@ package io.github.erickramer42.sensio
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Bundle
-import android.util.TypedValue
+import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -24,7 +23,8 @@ import android.widget.TextView
  * list. A tap on a dot selects that emitter: its card comes first, and the
  * list puts the emitters closest to it in signal strength first. A tap away
  * from the dots clears the selection, or with none, switches the ring between
- * large and small. The settings sit behind one button. The screen stays on
+ * large and small. The settings sit behind one button. Colors come from the
+ * user's theme (Theme.kt), read before the first frame. The screen stays on
  * while a session runs (roadmap item 69): the driver keeps the full picture,
  * and BLE keeps its match-everything scan.
  */
@@ -43,21 +43,24 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Ui.window(this)
+        val palette = Ui.palette(this)
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val pad = (12 * resources.displayMetrics.density).toInt()
 
-        ring = RingView(this).apply { onTap = ::tapped }
-        card = text(13f).apply { typeface = Typeface.MONOSPACE }
-        status = text(13f)
-        list = text(12f).apply { typeface = Typeface.MONOSPACE }
-        startStop = button("Start") { if (Live.running) stop() else start() }
+        ring = RingView(this, palette).apply { onTap = ::tapped }
+        card = Ui.text(this, 13f).apply { typeface = Typeface.MONOSPACE }
+        status = Ui.text(this, 14f)
+        list = Ui.text(this, 12f).apply { typeface = Typeface.MONOSPACE }
+        startStop = Ui.button(this, "Start") { if (Live.running) stop() else start() }
 
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             // Labels of different sizes would otherwise shift their buttons down to one baseline.
             isBaselineAligned = false
-            listOf(startStop, button("Mine") { chooseMine() }, button("Settings") { settings() })
-                .forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
+            val gap = (4 * resources.displayMetrics.density).toInt()
+            listOf(startStop, Ui.button(this@MainActivity, "Mine") { chooseMine() }, Ui.button(this@MainActivity, "Settings") { settings() })
+                .forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(gap, gap, gap, gap) }) }
         }
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val side = LinearLayout(this).apply {
@@ -68,7 +71,7 @@ class MainActivity : Activity() {
         }
         val root = LinearLayout(this).apply {
             orientation = if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(18, 20, 24))
+            setBackgroundColor(palette.bg)
             setPadding(pad, pad, pad, pad)
             addView(ring)
             addView(side, if (landscape) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, 0, 1f))
@@ -94,21 +97,6 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
-    private fun text(size: Float) = TextView(this).apply {
-        textSize = size
-        setTextColor(Color.rgb(220, 224, 232))
-        setPadding(0, 8, 0, 8)
-    }
-
-    private fun button(label: String, action: () -> Unit) = Button(this).apply {
-        text = label
-        isAllCaps = false
-        // One line in every row: a long label shrinks rather than wrapping.
-        maxLines = 1
-        setAutoSizeTextTypeUniformWithConfiguration(10, 16, 1, TypedValue.COMPLEX_UNIT_SP)
-        setOnClickListener { action() }
-    }
-
     private fun show() {
         val running = Live.running
         if (running) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -126,6 +114,10 @@ class MainActivity : Activity() {
         // An emitter that left the picture can't be shown or compared.
         if (chosen == null) selected = null
         ring.selected = selected
+        val trackers = picture?.emitters.orEmpty().count { it.tracker != null }
+        ring.contentDescription = if (picture == null) "Emitter ring, empty: no session yet" else
+            "Emitter ring: ${picture.emitters.size} emitters by signal strength and kind, $trackers tracker" +
+            (if (trackers == 1) "" else "s") + (chosen?.let { ", ${Labels.KINDS[it.kind] ?: it.kind} selected" } ?: "")
         val coverage = Live.coverage
         status.text = buildString {
             append(Live.status)
@@ -197,13 +189,14 @@ class MainActivity : Activity() {
             "Delete all" to {
                 if (Live.running) status.text = "Stop the session before deleting saved feeds." else confirmDeleteAll()
             },
+            "Theme: ${Options.theme(this).label}" to {
+                // Every view takes its colors when it's made, so the screen is made again.
+                Options.setTheme(this, Options.theme(this).next())
+                recreate()
+            },
             "About" to { About.show(this) },
         )
-        AlertDialog.Builder(this)
-            .setTitle("Settings")
-            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
-            .setNegativeButton("Close", null)
-            .show()
+        Ui.choices(this, "Settings", items)
     }
 
     private fun line(e: Emitter): String {
@@ -265,22 +258,20 @@ class MainActivity : Activity() {
         }
         val paired = Pairing.get(this)?.first
         val choices = listOfNotNull("Turn off", paired?.let { "Turn off and forget $it" })
-        AlertDialog.Builder(this)
-            .setTitle("Laptop link")
-            .setItems(choices.toTypedArray()) { _, which ->
+        Ui.choices(this, "Laptop link", choices.mapIndexed { which, label ->
+            label to {
                 Options.setLink(this, false)
                 if (which == 1) Pairing.forget(this)
                 show()
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }, "Cancel")
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if (requestCode == CLASSIC_REQUEST) {
             val granted = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
             Options.setClassic(this, granted)
-            if (!granted) status.text = "Bluetooth Classic discovery needs the nearby devices permission to connect."
+            if (!granted) refused(listOf(Manifest.permission.BLUETOOTH_CONNECT), "Bluetooth Classic discovery")
             show()
             return
         }
@@ -289,8 +280,26 @@ class MainActivity : Activity() {
         if (refused.isEmpty()) {
             startForegroundService(Intent(this, SessionService::class.java))
         } else {
-            status.text = "A session needs location, nearby devices and Wi-Fi scanning: " +
-                refused.joinToString { it.substringAfterLast('.') }
+            refused(refused, "A session")
+        }
+    }
+
+    /**
+     * Says what was refused. Each tap asks again; after the second refusal
+     * Android stops asking and refuses at once, so then only its settings can
+     * allow it, and the dialog opens them.
+     */
+    private fun refused(permissions: List<String>, what: String) {
+        val groups = Permissions.groups(permissions).joinToString(" and ")
+        status.text = "$what needs $groups."
+        if (permissions.none { shouldShowRequestPermissionRationale(it) }) {
+            Ui.confirm(
+                this, "Permission needed",
+                "$what needs $groups, and Android won't ask again. Allow it in Android settings: Apps, Peil, Permissions.",
+                "Open settings",
+            ) {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null)))
+            }
         }
     }
 
@@ -308,17 +317,12 @@ class MainActivity : Activity() {
                 e.tracker != null -> "TRACKER " + oneLine(line(e))
                 else -> oneLine(line(e))
             }
-        }.toTypedArray()
+        }
         val checked = offer.map { (e, device) -> device in enrolled || Enrolled.suggested(e, enrolled) }.toBooleanArray()
-        AlertDialog.Builder(this)
-            .setTitle("Which are yours?")
-            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
-            .setPositiveButton("Save") { _, _ ->
-                Enrolled.set(this, offer.indices.filter { checked[it] }.map { offer[it].second }.toSet())
-                show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        Ui.checks(this, "Which are yours?", labels, checked) { picked ->
+            Enrolled.set(this, offer.indices.filter { picked[it] }.map { offer[it].second }.toSet())
+            show()
+        }
     }
 
     private fun oneLine(s: String) = s.replace(Regex("\\s+"), " ")
@@ -332,15 +336,10 @@ class MainActivity : Activity() {
 
     private fun confirmDeleteAll() {
         val count = Recordings.files(this).size
-        AlertDialog.Builder(this)
-            .setTitle("Delete all saved feeds?")
-            .setMessage("$count saved session(s) on this phone. This can't be undone.")
-            .setPositiveButton("Delete") { _, _ ->
-                val deleted = Recordings.deleteAll(this)
-                status.text = "Deleted $deleted saved session(s)."
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        Ui.confirm(this, "Delete all saved feeds?", "$count saved session(s) on this phone. This can't be undone.", "Delete") {
+            val deleted = Recordings.deleteAll(this)
+            status.text = "Deleted $deleted saved session(s)."
+        }
     }
 
     companion object {

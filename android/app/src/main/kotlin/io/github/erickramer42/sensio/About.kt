@@ -1,10 +1,7 @@
 package io.github.erickramer42.sensio
 
-import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Typeface
-import android.widget.ScrollView
-import android.widget.TextView
 
 /**
  * The About page (ADR-0004 section 8): the app's version, its two licenses
@@ -41,18 +38,11 @@ object About {
     }
 
     fun show(context: Context) {
-        val body = TextView(context).apply {
+        val body = Ui.text(context, 12f).apply {
             text = text(context)
             typeface = Typeface.MONOSPACE
-            textSize = 11f
             setTextIsSelectable(true)
-            val pad = (16 * resources.displayMetrics.density).toInt()
-            setPadding(pad, pad, pad, pad)
         }
-        AlertDialog.Builder(context)
-            .setTitle("About Peil")
-            .setView(ScrollView(context).apply { addView(body) })
-            .setPositiveButton("Close", null)
-            .show()
+        Ui.dialog(context, "About Peil", body)
     }
 }

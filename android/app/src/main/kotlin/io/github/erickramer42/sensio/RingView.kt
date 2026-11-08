@@ -2,7 +2,6 @@ package io.github.erickramer42.sensio
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.view.MotionEvent
@@ -16,11 +15,12 @@ import kotlin.math.sin
  * emitter. The ring a dot sits in is its signal-strength band, strongest
  * innermost: strength, never distance. Its angle is its kind's sector, never
  * a direction; nothing here knows where an emitter is. Color is the kind;
- * a tracker is red with a halo. A tap on a dot selects it, and the selected
- * dot gets a white ring; [onTap] hears the tapped device, or null for a tap
- * away from every dot.
+ * a tracker takes the theme's danger color and a halo, a shape as well as a
+ * color, since in Night nearly everything is red. A tap on a dot selects it,
+ * and the selected dot gets a ring in the text color; [onTap] hears the tapped
+ * device, or null for a tap away from every dot. Colors come from [palette].
  */
-class RingView(context: Context) : View(context) {
+class RingView(context: Context, private val palette: Palette) : View(context) {
     var picture: Picture? = null
         set(value) {
             field = value
@@ -42,24 +42,24 @@ class RingView(context: Context) : View(context) {
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 1.5f * density
-        color = Color.rgb(90, 96, 110)
+        color = palette.outline
     }
     private val unknownRingPaint = Paint(ringPaint).apply { pathEffect = DashPathEffect(floatArrayOf(6 * density, 6 * density), 0f) }
-    private val sectorPaint = Paint(ringPaint).apply { color = Color.rgb(55, 60, 70) }
+    private val sectorPaint = Paint(ringPaint).apply { color = palette.faint }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
     private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2.5f * density
-        color = TRACKER
+        color = palette.danger
     }
-    private val selectedRing = Paint(halo).apply { color = Color.WHITE }
+    private val selectedRing = Paint(halo).apply { color = palette.text }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(170, 176, 190)
+        color = palette.text
         textSize = 12 * density
     }
 
     private val bandLabel = Paint(label).apply {
-        color = Color.rgb(120, 126, 140)
+        color = palette.textDim
         textSize = 10 * density
     }
 
@@ -103,7 +103,7 @@ class RingView(context: Context) : View(context) {
             val y = if (band == "unknown") cy + bandLabel.textSize + 2 * density else cy - 4 * density
             canvas.drawText(text, cx + outer * r - bandLabel.measureText(text) - 4 * density, y, bandLabel)
         }
-        dot.color = Color.WHITE
+        dot.color = palette.text
         canvas.drawCircle(cx, cy, 5 * density, dot)
 
         val emitters = picture?.emitters ?: return
@@ -121,7 +121,7 @@ class RingView(context: Context) : View(context) {
             val radius = r * (inner + (outer - inner) * (0.2f + 0.6f * fr))
             val x = cx + radius * cos(angle).toFloat()
             val y = cy + radius * sin(angle).toFloat()
-            dot.color = if (e.tracker != null) TRACKER else KIND_COLORS[e.kind] ?: Color.GRAY
+            dot.color = if (e.tracker != null) palette.danger else palette.kinds[e.kind] ?: palette.textDim
             canvas.drawCircle(x, y, (if (e.tracker != null) 6f else 4.5f) * density, dot)
             if (e.tracker != null) canvas.drawCircle(x, y, 11 * density, halo)
             if (e.device == selected) canvas.drawCircle(x, y, 15 * density, selectedRing)
@@ -183,15 +183,5 @@ class RingView(context: Context) : View(context) {
             "station" to "Station",
             "tpms" to "TPMS",
         )
-
-        private val KIND_COLORS = mapOf(
-            "ble" to Color.rgb(80, 200, 120),
-            "bt_classic" to Color.rgb(180, 130, 255),
-            "access_point" to Color.rgb(90, 160, 255),
-            "station" to Color.rgb(80, 220, 230),
-            "tpms" to Color.rgb(240, 180, 60),
-        )
-
-        val TRACKER: Int = Color.rgb(255, 80, 80)
     }
 }

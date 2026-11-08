@@ -49,6 +49,7 @@ object Options {
     private const val CLASSIC = "classic_discovery"
     private const val LINK = "laptop_link"
     private const val RING_LARGE = "ring_large"
+    private const val THEME = "theme"
 
     /**
      * Bluetooth Classic discovery: off unless the user turns it on. It
@@ -74,6 +75,13 @@ object Options {
 
     fun setRingLarge(context: Context, large: Boolean) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(RING_LARGE, large).apply()
+
+    /** The color theme; Dark unless the user picks another. */
+    fun theme(context: Context): Theme =
+        Theme.of(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(THEME, null))
+
+    fun setTheme(context: Context, theme: Theme) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(THEME, theme.key).commit()
 }
 
 /**
