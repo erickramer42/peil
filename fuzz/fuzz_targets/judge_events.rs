@@ -17,7 +17,7 @@ struct Session {
     events: Vec<(Time, Option<u8>, Kind)>,
 }
 
-const RECEIVERS: [&str; 3] = ["phone", "thinkpad", "rear-pi"];
+const RECEIVERS: [&str; 3] = ["phone", "laptop", "rear-pi"];
 const MAX_EVENTS: usize = 2000;
 
 fuzz_target!(|session: Session| {

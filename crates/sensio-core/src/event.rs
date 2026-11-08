@@ -20,7 +20,7 @@ pub struct Event {
     pub t_ns: TimeNs,
     /// What produced it, for example `kismet`, `rtl_433`, `gpsd` or `android`.
     pub source: String,
-    /// The radio that received it and where it sits (`phone`, `thinkpad`,
+    /// The radio that received it and where it sits (`phone`, `laptop`,
     /// `rear-pi`), from the user's configuration; `None` when unknown. It
     /// never splits a device: the same address from two receivers is one
     /// device.

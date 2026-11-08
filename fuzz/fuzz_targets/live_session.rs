@@ -16,7 +16,7 @@ use sensio_core::{Event, EventKind, Live, TimeNs, Verdict, judge, run};
 use sensio_fuzz::{Kind, Rule, Time};
 use sensio_sources::Sources;
 
-const RECEIVERS: [&str; 5] = ["phone", "thinkpad", "rear-pi", "Rear Pi", ""];
+const RECEIVERS: [&str; 5] = ["phone", "laptop", "rear-pi", "Rear Pi", ""];
 const RADIOS: [&str; 4] = ["ble", "wifi", "gnss", "no good"];
 const STATES: [RadioState; 4] = [
     RadioState::On,

@@ -75,11 +75,11 @@ One JSON object per line. `t_ns` is nanoseconds since the Unix epoch (UTC) on th
 
 ```json
 {"t_ns":1800000000000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}
-{"t_ns":1800000001000000000,"source":"kismet","receiver":"thinkpad","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-58}
+{"t_ns":1800000001000000000,"source":"kismet","receiver":"laptop","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-58}
 {"t_ns":1800000002000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"cc:cc:cc:00:00:01","ssid":"example-hotspot","freq_mhz":2437,"rssi_dbm":-61}
-{"t_ns":1800000003000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"dd:dd:dd:00:00:01","bssid":"cc:cc:cc:00:00:01","freq_mhz":5180,"rssi_dbm":-70}
+{"t_ns":1800000003000000000,"source":"kismet","receiver":"laptop","kind":"wifi_client","addr":"dd:dd:dd:00:00:01","bssid":"cc:cc:cc:00:00:01","freq_mhz":5180,"rssi_dbm":-70}
 {"t_ns":1800000004000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-12.5}
-{"t_ns":1800000005000000000,"source":"kismet","receiver":"thinkpad","kind":"bt_classic","addr":"ee:ee:ee:00:00:01","rssi_dbm":-66,"device_class":2098180}
+{"t_ns":1800000005000000000,"source":"kismet","receiver":"laptop","kind":"bt_classic","addr":"ee:ee:ee:00:00:01","rssi_dbm":-66,"device_class":2098180}
 ```
 
 A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for. A BLE advert can carry its manufacturer data, service data and service UUIDs (hex, each entry at most 255 bytes), and an access point the security it announces (`{"protocol":"wpa2","enterprise":true}`); a Bluetooth Classic device carries its Class of Device (24 bits); an advertised or discovered device name is never kept, since it is often a person's name ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).

@@ -1,1 +1,1 @@
-{"t_ns":1800000002000000000,"source":"kismet","receiver":"thinkpad","kind":"wifi_client","addr":"ff:ff:ff:00:00:02","bssid":"ee:ee:ee:00:00:01","freq_mhz":2437,"rssi_dbm":-60}
+{"t_ns":1800000002000000000,"source":"kismet","receiver":"laptop","kind":"wifi_client","addr":"ff:ff:ff:00:00:02","bssid":"ee:ee:ee:00:00:01","freq_mhz":2437,"rssi_dbm":-60}

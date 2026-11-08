@@ -371,7 +371,7 @@ fn link_pairs_with_the_code_once_then_proves_the_pairing() {
         "--code",
         "123456",
         "--receiver",
-        "thinkpad",
+        "laptop",
         "--kismet",
         "http://127.0.0.1:9",
     ]);
@@ -380,13 +380,13 @@ fn link_pairs_with_the_code_once_then_proves_the_pairing() {
 
     assert_eq!(pairing_hello["code"], "123456");
     assert!(proving_hello.get("code").is_none(), "{proving_hello}");
-    assert_eq!(proving_hello["receiver"], "thinkpad");
+    assert_eq!(proving_hello["receiver"], "laptop");
     let kept: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&pairing).expect("the pairing is kept"))
             .expect("JSON");
     assert_eq!(
         kept,
-        serde_json::json!({"receiver": "thinkpad", "secret": secret})
+        serde_json::json!({"receiver": "laptop", "secret": secret})
     );
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr.contains("paired with the phone"), "{stderr}");
@@ -395,7 +395,7 @@ fn link_pairs_with_the_code_once_then_proves_the_pairing() {
     // With the pairing kept, a different name is refused before connecting.
     let output = run(&["--receiver", "other"]);
     assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("paired as thinkpad"));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("paired as laptop"));
 }
 
 #[test]
