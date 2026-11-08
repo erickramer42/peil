@@ -162,6 +162,22 @@ class SessionService : Service() {
         }
     }
 
+    /**
+     * Android moves a scan that has run past its scan timeout to opportunistic
+     * mode, which gets results only while another app scans: about 2,700 BLE
+     * results a minute fell to about 15 at the five-minute mark on the test
+     * phone, whose timeout is 5 minutes (`dumpsys bluetooth_manager`,
+     * ScanTimeoutMillis; 30 minutes in AOSP). A fresh start resets it, so the
+     * scan starts again before the shortest timeout; one start every few
+     * minutes is far inside Android's limit of 5 starts in 30 s.
+     */
+    private val bleRenew = object : Runnable {
+        override fun run() {
+            if (bleRunning) startBle(bleFiltered, renew = true)
+            handler.postDelayed(this, BLE_RENEW_MS)
+        }
+    }
+
     private val wifiScan = object : Runnable {
         override fun run() {
             // Android refuses a scan while it's throttling them, or with Wi-Fi
@@ -206,6 +222,7 @@ class SessionService : Service() {
             handler,
         )
         startBle(filtered = !getSystemService(PowerManager::class.java).isInteractive)
+        handler.postDelayed(bleRenew, BLE_RENEW_MS)
         registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), null, handler)
         registerReceiver(classicReceiver, IntentFilter(BluetoothDevice.ACTION_FOUND), null, handler)
         handler.post(classicScan)
@@ -229,16 +246,17 @@ class SessionService : Service() {
     /**
      * A match-everything BLE filter while the screen is on; specific ones while
      * it's off, since Android pauses a match-everything scan then (ADR-0004,
-     * amended 2026-11-06).
+     * amended 2026-11-06). [renew] stops and starts a running scan anyway: see
+     * [bleRenew].
      */
-    private fun startBle(filtered: Boolean) {
+    private fun startBle(filtered: Boolean, renew: Boolean = false) {
         val scanner = getSystemService(BluetoothManager::class.java).adapter?.bluetoothLeScanner
         if (scanner == null) {
             radio("ble", Feed.RadioState.OFF)
             Live.status("No BLE scanner (is Bluetooth off?)")
             return
         }
-        if (bleRunning && bleFiltered == filtered) return
+        if (bleRunning && bleFiltered == filtered && !renew) return
         if (bleRunning) runCatching { scanner.stopScan(bleCallback) }
         val filters = if (!filtered) {
             listOf(ScanFilter.Builder().build())
@@ -443,6 +461,7 @@ class SessionService : Service() {
     companion object {
         const val JUDGE_EVERY_MS = 3_000L
         const val WIFI_EVERY_MS = 10_000L
+        const val BLE_RENEW_MS = 240_000L
         const val CLASSIC_EVERY_MS = 30_000L
         const val CLOCK_EVERY_MS = 60_000L
         const val RESTART_MAX_MS = 60_000L
