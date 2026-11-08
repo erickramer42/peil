@@ -62,7 +62,7 @@ jobs:
           dir="dist/$NAME"
           mkdir -p "$dir"
           cp "target/$TARGET/release/peil" "$dir/"
-          file "$dir/peil" | grep -Eq 'static(-pie)? linked' || { file "$dir/peil"; echo "peil isn't static"; exit 1; }
+          file "$dir/peil" | grep -Eq 'static(ally|-pie)? linked' || { file "$dir/peil"; echo "peil isn't static"; exit 1; }
           "$dir/peil" --version | grep -qx "peil $VERSION" || { "$dir/peil" --version; exit 1; }
           cp LICENSE-MIT LICENSE-APACHE README.md CHANGELOG.md THIRD_PARTY_NOTICES.md contrib/systemd/peil-link.service "$dir/"
           python3 -I packaging/crate_licenses.py --target "$TARGET" --out "$dir/THIRD_PARTY_LICENSES.txt"

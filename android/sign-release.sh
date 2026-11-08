@@ -40,9 +40,12 @@ grep -q " name='io.github.erickramer42.peil' " <<<"$line" || fail "wrong applica
 grep -q " versionCode='$code' " <<<"$line" || fail "version code isn't $code: $line"
 grep -q " versionName='$version' " <<<"$line" || fail "version name isn't $version: $line"
 if grep -q '^application-debuggable' <<<"$badging"; then fail "the APK is debuggable"; fi
-libs="$(unzip -Z1 "$in" | grep '^lib/' || true)"
+# The listing is read whole first: `grep -q` stops reading at its first match,
+# and under pipefail the cut-off unzip would fail the check at random.
+files="$(unzip -Z1 "$in")"
+libs="$(grep '^lib/' <<<"$files" || true)"
 [ "$libs" = "lib/arm64-v8a/libsensio.so" ] || fail "native libraries other than the arm64 core: $libs"
-unzip -Z1 "$in" | grep -qx 'assets/licenses/RUST-CRATES' || fail "the core's crate notices aren't in the APK"
+grep -qx 'assets/licenses/RUST-CRATES' <<<"$files" || fail "the core's crate notices aren't in the APK"
 
 # Aligned for 16 KB pages, then signed with v3 alone.
 work="$(mktemp -d)"
@@ -61,8 +64,14 @@ for scheme in "v1 scheme (JAR signing): false" "v2 scheme (APK Signature Scheme 
     "v3 scheme (APK Signature Scheme v3): true"; do
     grep -qF "Verified using $scheme" <<<"$verify" || fail "expected 'Verified using $scheme'"
 done
-[ "$(grep -c '^Signer #[0-9]* certificate SHA-256 digest:' <<<"$verify")" = 1 ] || fail "expected one signer"
-cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$verify")"
+# apksigner names a signer "Signer #1" or, in some versions, by the SDK range it
+# covers ("Signer (minSdkVersion=31, ...)"); either way the APK must carry one
+# certificate. The output is printed on failure: it holds certificates, which are public.
+cert="$(sed -n 's/^Signer.* certificate SHA-256 digest: //p' <<<"$verify" | sort -u)"
+if [ -z "$cert" ] || [ "$(wc -l <<<"$cert")" != 1 ]; then
+    echo "$verify" >&2
+    fail "expected one signing certificate, found: ${cert:-none}"
+fi
 pin="$(tr -d ': \r\n' <"$pin_file" | tr 'A-F' 'a-f')"
 [[ "$pin" =~ ^[0-9a-f]{64}$ ]] || fail "$pin_file doesn't hold a SHA-256 fingerprint"
 [ "$cert" = "$pin" ] || fail "signed with certificate $cert, but $pin_file pins $pin"
