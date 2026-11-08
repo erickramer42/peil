@@ -1,0 +1,21 @@
+# Changelog
+
+Each release's changes, newest first. Versions follow the rules in the README's Releases section; the release workflow takes a release's notes from its section here, and a release tag needs the section dated.
+
+## 0.1.0 - Unreleased
+
+The emitter picture around a vehicle or a building, live on the phone, with a laptop running Kismet when one is connected.
+
+### Added
+
+- The Android app: a session reads the phone's Wi-Fi scans, BLE scans and GNSS fixes, keeps every raw line in a saved feed on the phone (1, 7 or 30 days, or deleted all at once), and draws the emitters as a ring by signal-strength band and kind, the loudest listed beside it, with the ambient texture and each radio's coverage under it. Bluetooth Classic discovery and the laptop link are settings, off by default. Emitters marked as your own leave the ring.
+- `peil live`: the live feed in, the emitter picture and verdicts out (`sensio.feed/1`, `sensio.verdicts/1`); a saved feed replays to the same bytes. Memory grows with the emitters seen, not the sightings.
+- `peil describe`: each emitter's kind, signal band, sightings per receiver, vendor block (from the IEEE registry you supply), tracker network (Apple Find My, Google's Find Hub network, DULT), an access point's security, and a Bluetooth Classic device's category.
+- `peil judge` with one rule, `persistence.places`: a device seen at several distinct places over a span of time.
+- `peil link`: Kismet's devices from a laptop to the app over USB tethering, paired once with a code, with a systemd unit.
+- The sources: the app's raw lines, Kismet's device records, and normalized events.
+
+### Downloads
+
+- `peil-<version>-x86_64-linux.tar.gz` and `peil-<version>-aarch64-linux.tar.gz`: the `peil` command, built static (musl), with the licenses and the notices of the crates linked into it.
+- `peil-<version>.apk`: the app, for Android 12 or later on arm64. It's signed with the release key; a debug build installed from source has a different key, so it has to be uninstalled first, which deletes its saved feeds.

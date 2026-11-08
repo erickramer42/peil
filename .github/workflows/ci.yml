@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # The release workflow runs all of CI on the tagged commit.
+  workflow_call:
 
 permissions:
   contents: read

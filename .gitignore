@@ -8,3 +8,9 @@
 *.kismet-journal
 *.pcap
 *.pcapng
+
+# Signing keys never enter the repository (ADR-0004 section 1).
+*.p12
+*.pfx
+*.jks
+*.keystore

@@ -1,0 +1,145 @@
+name: Release
+
+# A tag vMAJOR.MINOR.PATCH (or -rcN, a dry run marked a prerelease) builds the
+# release: the Linux binaries for x86_64 and aarch64, static against musl so
+# they run on any distribution, and the signed APK (ADR-0004 section 1). It
+# drafts a GitHub release with them; publishing the draft is a person's step.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # The tag names the version Cargo.toml, the app and CHANGELOG.md carry.
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: check
+        run: python3 -I packaging/release.py check "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+  # All of CI on the tagged commit; nothing is published unless it passes.
+  ci:
+    needs: gate
+    uses: ./.github/workflows/ci.yml
+
+  linux:
+    needs: gate
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, arch: x86_64 }
+          - { os: ubuntu-24.04-arm, arch: aarch64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      TARGET: ${{ matrix.arch }}-unknown-linux-musl
+      NAME: peil-${{ needs.gate.outputs.version }}-${{ matrix.arch }}-linux
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No build cache: a release builds from the lock file alone.
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+          targets: ${{ env.TARGET }}
+      - name: Build
+        run: |
+          export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$GITHUB_WORKSPACE=. --remap-path-prefix=$HOME/.cargo=cargo"
+          cargo build -p sensio-cli --release --locked --target "$TARGET"
+      - name: Package
+        run: |
+          dir="dist/$NAME"
+          mkdir -p "$dir"
+          cp "target/$TARGET/release/peil" "$dir/"
+          file "$dir/peil" | grep -Eq 'static(-pie)? linked' || { file "$dir/peil"; echo "peil isn't static"; exit 1; }
+          "$dir/peil" --version | grep -qx "peil $VERSION" || { "$dir/peil" --version; exit 1; }
+          cp LICENSE-MIT LICENSE-APACHE README.md CHANGELOG.md THIRD_PARTY_NOTICES.md contrib/systemd/peil-link.service "$dir/"
+          python3 -I packaging/crate_licenses.py --target "$TARGET" --out "$dir/THIRD_PARTY_LICENSES.txt"
+          epoch="$(git log -1 --format=%ct)"
+          tar --sort=name --mtime="@$epoch" --owner=0 --group=0 --numeric-owner -C dist -cf - "$NAME" | gzip -n > "dist/$NAME.tar.gz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/${{ env.NAME }}.tar.gz
+          if-no-files-found: error
+
+  # The signing key is in the environment `release`, which only v* tags can
+  # deploy, and only this job names it.
+  android:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: gradle/actions/wrapper-validation@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Build the core
+        run: |
+          export RUSTFLAGS="$RUSTFLAGS --remap-path-prefix=$GITHUB_WORKSPACE=. --remap-path-prefix=$HOME/.cargo=cargo"
+          android/build-core.sh
+      - run: ./gradlew --no-daemon assembleRelease checkPackagedLibraries
+        working-directory: android
+      - run: python3 -I android/check_manifest.py android/app/build/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml
+      - name: Sign
+        env:
+          PEIL_KEYSTORE_BASE64: ${{ secrets.PEIL_KEYSTORE_BASE64 }}
+          PEIL_KEYSTORE_PASSWORD: ${{ secrets.PEIL_KEYSTORE_PASSWORD }}
+        run: |
+          export PEIL_KEYSTORE="$RUNNER_TEMP/peil-release.p12"
+          trap 'rm -f "$PEIL_KEYSTORE"' EXIT
+          base64 -d <<<"$PEIL_KEYSTORE_BASE64" > "$PEIL_KEYSTORE"
+          mkdir -p dist
+          bash android/sign-release.sh android/app/build/outputs/apk/release/app-release-unsigned.apk "dist/peil-$VERSION.apk" "$VERSION"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: apk
+          path: dist/peil-${{ env.VERSION }}.apk
+          if-no-files-found: error
+
+  publish:
+    needs: [gate, ci, linux, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      PRERELEASE: ${{ needs.gate.outputs.prerelease }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Draft the release
+        run: |
+          ls dist
+          [ "$(ls dist | wc -l)" = 3 ] || { echo "expected two tarballs and the APK"; exit 1; }
+          cert="$(tr -d ': \r\n' < android/release-cert.sha256 | tr 'A-F' 'a-f')"
+          python3 -I packaging/release.py notes "$GITHUB_REF_NAME" "$cert" dist/* > notes.md
+          (cd dist && sha256sum * > SHA256SUMS)
+          flags=(--draft --verify-tag --title "Peil $GITHUB_REF_NAME" --notes-file notes.md)
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" dist/*
