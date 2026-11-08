@@ -6,7 +6,7 @@ A release is tagged `vMAJOR.MINOR.PATCH`, the version in `Cargo.toml` and the ap
 
 The APK is signed with one key; each release's notes and `apksigner verify --print-certs` show its certificate's SHA-256 fingerprint, which `android/release-cert.sha256` pins.
 
-## 0.1.0 - Unreleased
+## 0.1.0 - 2026-11-08
 
 The emitter picture around a vehicle or a building, live on the phone, with a laptop running Kismet when one is connected.
 
