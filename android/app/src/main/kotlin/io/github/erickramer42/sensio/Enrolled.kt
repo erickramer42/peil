@@ -20,17 +20,20 @@ object Enrolled {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(DEVICES, devices).apply()
 
     /**
-     * What to offer: the enrolled ones first, then the loudest others. A
-     * suggestion is checked only when nothing is enrolled yet, and then only
-     * strong ones that aren't trackers: a tracker hidden in the car is loud
-     * too, and enrolling it would hide what Peil looks for.
+     * What to offer: the enrolled ones first, then every tracker the core
+     * recognized, loudest first, then the loudest others, at most [max] of
+     * them. Trackers come whatever their strength: a tag in a wallet or a bag
+     * is often weak, and the user can only mark what's offered. A suggestion
+     * is checked only when nothing is enrolled yet, and then only strong ones
+     * that aren't trackers: a tracker hidden in the car is loud too, and
+     * enrolling it would hide what Peil looks for.
      */
-    fun offer(picture: Picture?, enrolled: Set<String>, max: Int = 20): List<Pair<Emitter?, String>> {
+    fun offer(picture: Picture?, enrolled: Set<String>, max: Int = 40): List<Pair<Emitter?, String>> {
         val emitters = picture?.emitters.orEmpty()
         val byDevice = emitters.associateBy { it.device }
         val mine = enrolled.sorted().map { byDevice[it] to it }
-        val others = emitters.filter { it.device !in enrolled }.take(max).map { it to it.device }
-        return mine + others
+        val (trackers, rest) = emitters.filter { it.device !in enrolled }.partition { it.tracker != null }
+        return mine + (trackers + rest.take(max)).map { it to it.device }
     }
 
     fun suggested(emitter: Emitter?, enrolled: Set<String>): Boolean =
