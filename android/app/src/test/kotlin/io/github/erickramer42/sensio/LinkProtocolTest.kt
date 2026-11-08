@@ -46,9 +46,11 @@ class LinkProtocolTest {
         assertTrue(LinkProtocol.verify(secret, "laptop", nonce, right))
         assertTrue(LinkProtocol.verify(secret, "laptop", nonce, right.uppercase()))
         assertFalse(LinkProtocol.verify(secret, "laptop", "bb".repeat(16), right))
-        assertFalse(LinkProtocol.verify(secret, "thinkpad", nonce, right))
+        assertFalse(LinkProtocol.verify(secret, "desktop", nonce, right))
         assertFalse(LinkProtocol.verify(ByteArray(32), "laptop", nonce, right))
-        for (bad in listOf(null, "", "zz", right.dropLast(1), right.dropLast(2))) {
+        // The right bytes with a sign in place of a digit ("03" as "+3") are still refused.
+        val signed = right.replaceRange(18, 20, "+3")
+        for (bad in listOf(null, "", "zz", right.dropLast(1), right.dropLast(2), signed)) {
             assertFalse("$bad", LinkProtocol.verify(secret, "laptop", nonce, bad))
         }
     }

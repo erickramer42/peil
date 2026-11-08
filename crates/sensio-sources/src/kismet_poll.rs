@@ -84,7 +84,20 @@ impl Poller {
             .limit(MAX_RESPONSE_BYTES)
             .read_to_vec()
             .map_err(|_| PollError::NotDevices("unreadable or too long".to_owned()))?;
-        let records: Vec<Value> = serde_json::from_slice(&bytes).map_err(|err| {
+        self.take_body(&bytes)
+    }
+
+    /// The pruned records, as JSON text, of the devices in one answer's
+    /// body that Kismet has seen again since they were last handed on: the
+    /// step of [`Poller::poll`] after the request, which bounds the body to
+    /// [`MAX_RESPONSE_BYTES`] before it gets here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PollError::NotDevices`] when the body isn't a JSON list;
+    /// the poller's state is unchanged.
+    pub fn take_body(&mut self, body: &[u8]) -> Result<Vec<String>, PollError> {
+        let records: Vec<Value> = serde_json::from_slice(body).map_err(|err| {
             PollError::NotDevices(sensio_core::event::reason_without_values(&err))
         })?;
         Ok(self.fresh(&records))

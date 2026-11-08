@@ -126,7 +126,7 @@ fn config(phone: SocketAddr, auth: Auth) -> Config {
     Config {
         phone,
         auth,
-        receiver: "thinkpad".to_owned(),
+        receiver: "laptop".to_owned(),
         app: "peil-test".to_owned(),
         poll_every: Duration::from_millis(50),
     }
@@ -187,7 +187,7 @@ fn a_session_says_hello_answers_pings_and_sends_kismets_records() {
     assert_eq!(
         pairings,
         [Pairing {
-            receiver: "thinkpad".to_owned(),
+            receiver: "laptop".to_owned(),
             secret: SECRET.to_owned()
         }],
         "the code's welcome is a pairing to keep"
@@ -199,7 +199,7 @@ fn a_session_says_hello_answers_pings_and_sends_kismets_records() {
         LinkLine::Hello {
             schema: link::SCHEMA.to_owned(),
             code: Some("123456".to_owned()),
-            receiver: "thinkpad".to_owned(),
+            receiver: "laptop".to_owned(),
             app: "peil-test".to_owned(),
         }
     );
@@ -340,6 +340,16 @@ fn the_proof_is_the_one_the_app_checks() {
         ..pairing
     };
     assert_eq!(link::proof(&short, "aa"), None, "a secret too short to use");
+}
+
+#[test]
+fn a_secret_with_a_sign_in_it_gives_no_proof() {
+    // Found by the link_line fuzz target: a sign parses as part of a hex byte.
+    let pairing = Pairing {
+        receiver: "laptop".to_owned(),
+        secret: format!("+a{}", "0a".repeat(15)),
+    };
+    assert_eq!(link::proof(&pairing, "aa"), None);
 }
 
 #[test]

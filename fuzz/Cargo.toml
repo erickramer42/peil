@@ -69,5 +69,19 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "link_line"
+path = "fuzz_targets/link_line.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kismet_poll"
+path = "fuzz_targets/kismet_poll.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

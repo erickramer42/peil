@@ -78,7 +78,8 @@ object LinkProtocol {
 
     /** The bytes of lowercase or uppercase hex, or null. */
     fun unhex(text: String): ByteArray? {
-        if (text.length % 2 != 0) return null
+        // Digits only: toInt(16) alone takes a sign ("+a", "-6").
+        if (text.length % 2 != 0 || !text.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }) return null
         return runCatching { ByteArray(text.length / 2) { text.substring(it * 2, it * 2 + 2).toInt(16).toByte() } }.getOrNull()
     }
 

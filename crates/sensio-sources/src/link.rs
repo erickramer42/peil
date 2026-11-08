@@ -3,7 +3,7 @@
 //! `sensio.link/1`, each with its `type`.
 //!
 //! - The laptop opens with `hello`: the schema, the receiver's name
-//!   (`thinkpad`), its version, and, to pair, the code the app shows.
+//!   (`laptop`), its version, and, to pair, the code the app shows.
 //! - To a code, the phone answers `welcome` with a new shared secret, which
 //!   the laptop keeps ([`Pairing`]). Without a code, the phone sends a
 //!   `challenge` with a fresh nonce and the laptop answers with a `proof`,
@@ -136,7 +136,11 @@ pub enum Auth {
 
 /// The bytes the secret's hex text stands for, if it's 16 to 64 bytes of hex.
 fn secret_bytes(hex: &str) -> Option<Vec<u8>> {
-    if hex.len() % 2 != 0 || !(32..=128).contains(&hex.len()) {
+    // Digits only: `from_str_radix` alone takes a sign ("+a").
+    if hex.len() % 2 != 0
+        || !(32..=128).contains(&hex.len())
+        || !hex.bytes().all(|b| b.is_ascii_hexdigit())
+    {
         return None;
     }
     (0..hex.len())
