@@ -43,11 +43,12 @@ object Recordings {
     fun coreBinary(context: Context): File = File(context.applicationInfo.nativeLibraryDir, "libsensio.so")
 }
 
-/** The user's settings that change what a session does. */
+/** The user's settings: what a session does, and how the screen shows it. */
 object Options {
     private const val PREFS = "options"
     private const val CLASSIC = "classic_discovery"
     private const val LINK = "laptop_link"
+    private const val RING_LARGE = "ring_large"
 
     /**
      * Bluetooth Classic discovery: off unless the user turns it on. It
@@ -66,6 +67,13 @@ object Options {
 
     fun setLink(context: Context, on: Boolean) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(LINK, on).apply()
+
+    /** The ring drawn large (the default) or small, leaving more room for the list. */
+    fun ringLarge(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(RING_LARGE, true)
+
+    fun setRingLarge(context: Context, large: Boolean) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(RING_LARGE, large).apply()
 }
 
 /**

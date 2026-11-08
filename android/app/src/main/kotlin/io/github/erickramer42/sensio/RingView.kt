@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.view.MotionEvent
 import android.view.View
 import kotlin.math.cos
 import kotlin.math.min
@@ -15,7 +16,9 @@ import kotlin.math.sin
  * emitter. The ring a dot sits in is its signal-strength band, strongest
  * innermost: strength, never distance. Its angle is its kind's sector, never
  * a direction; nothing here knows where an emitter is. Color is the kind;
- * a tracker is red with a halo.
+ * a tracker is red with a halo. A tap on a dot selects it, and the selected
+ * dot gets a white ring; [onTap] hears the tapped device, or null for a tap
+ * away from every dot.
  */
 class RingView(context: Context) : View(context) {
     var picture: Picture? = null
@@ -23,6 +26,17 @@ class RingView(context: Context) : View(context) {
             field = value
             invalidate()
         }
+
+    var selected: String? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var onTap: ((String?) -> Unit)? = null
+
+    /** Where each dot was last drawn, for taps. */
+    private var spots: List<Spot> = emptyList()
 
     private val density = resources.displayMetrics.density
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -38,6 +52,7 @@ class RingView(context: Context) : View(context) {
         strokeWidth = 2.5f * density
         color = TRACKER
     }
+    private val selectedRing = Paint(halo).apply { color = Color.WHITE }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.rgb(170, 176, 190)
         textSize = 12 * density
@@ -78,9 +93,13 @@ class RingView(context: Context) : View(context) {
             canvas.drawText(text, tx, ty, label)
         }
         // Each band's name at its ring's right edge, just above the horizon; the
-        // outermost one below it, where it has room.
-        for ((band, outer) in BANDS) {
+        // outermost one below it, where it has room. A small ring leaves out the
+        // labels its bands are too narrow for.
+        for ((i, entry) in BANDS.withIndex()) {
+            val (band, outer) = entry
             val text = BAND_LABELS.getValue(band)
+            val room = (outer - (if (i == 0) 0f else BANDS[i - 1].second)) * r
+            if (band != "unknown" && bandLabel.measureText(text) + 8 * density > room) continue
             val y = if (band == "unknown") cy + bandLabel.textSize + 2 * density else cy - 4 * density
             canvas.drawText(text, cx + outer * r - bandLabel.measureText(text) - 4 * density, y, bandLabel)
         }
@@ -88,6 +107,7 @@ class RingView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, 5 * density, dot)
 
         val emitters = picture?.emitters ?: return
+        val drawn = ArrayList<Spot>(emitters.size)
         for (e in emitters) {
             val (from, span) = sectors.firstOrNull { it.kind == e.kind }?.let { it.from to it.span } ?: continue
             val bandIndex = BANDS.indexOfFirst { it.first == e.band }.takeIf { it >= 0 } ?: (BANDS.size - 1)
@@ -104,8 +124,26 @@ class RingView(context: Context) : View(context) {
             dot.color = if (e.tracker != null) TRACKER else KIND_COLORS[e.kind] ?: Color.GRAY
             canvas.drawCircle(x, y, (if (e.tracker != null) 6f else 4.5f) * density, dot)
             if (e.tracker != null) canvas.drawCircle(x, y, 11 * density, halo)
+            if (e.device == selected) canvas.drawCircle(x, y, 15 * density, selectedRing)
+            drawn.add(Spot(e.device, x, y))
         }
+        spots = drawn
     }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> return true
+            MotionEvent.ACTION_UP -> {
+                // A fingertip is about 10 mm across; dots are a few millimeters apart.
+                onTap?.invoke(Selection.nearest(spots, event.x, event.y, 20 * density))
+                performClick()
+                return true
+            }
+        }
+        return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean = super.performClick()
 
     private data class Sector(val kind: String, val from: Float, val span: Float)
 

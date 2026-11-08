@@ -10,7 +10,7 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.util.TypedValue
-import android.view.View
+import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
@@ -19,21 +19,26 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * The screen: the ring, the loudest emitters as a list, the session's
- * coverage, and the controls. It stays on while a session runs (roadmap item
- * 69): the driver keeps the full picture, and BLE keeps its match-everything
- * scan.
+ * The screen: the ring, one row of controls, and below them, scrolling
+ * together, the session's status and coverage and the loudest emitters as a
+ * list. A tap on a dot selects that emitter: its card comes first, and the
+ * list puts the emitters closest to it in signal strength first. A tap away
+ * from the dots clears the selection, or with none, switches the ring between
+ * large and small. The settings sit behind one button. The screen stays on
+ * while a session runs (roadmap item 69): the driver keeps the full picture,
+ * and BLE keeps its match-everything scan.
  */
 class MainActivity : Activity() {
     private lateinit var ring: RingView
+    private lateinit var body: LinearLayout
+    private lateinit var scroll: ScrollView
+    /** The emitter the body is laid out for, so it's rearranged only when that changes. */
+    private var laidOutFor: String? = ""
+    private lateinit var card: TextView
     private lateinit var status: TextView
     private lateinit var list: TextView
     private lateinit var startStop: Button
-    private lateinit var retention: Button
-    private lateinit var deleteAll: Button
-    private lateinit var mine: Button
-    private lateinit var classic: Button
-    private lateinit var laptop: Button
+    private var selected: String? = null
     private val refresh: () -> Unit = { show() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,46 +46,34 @@ class MainActivity : Activity() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val pad = (12 * resources.displayMetrics.density).toInt()
 
-        ring = RingView(this)
+        ring = RingView(this).apply { onTap = ::tapped }
+        card = text(13f).apply { typeface = Typeface.MONOSPACE }
         status = text(13f)
         list = text(12f).apply { typeface = Typeface.MONOSPACE }
         startStop = button("Start") { if (Live.running) stop() else start() }
-        retention = button("") { cycleRetention() }
-        deleteAll = button("Delete all") { confirmDeleteAll() }
-        val about = button("About") { About.show(this) }
-        mine = button("Mine") { chooseMine() }
-        classic = button("") { toggleClassic() }
-        laptop = button("") { toggleLaptop() }
 
-        fun row(vararg views: View) = LinearLayout(this).apply {
+        val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             // Labels of different sizes would otherwise shift their buttons down to one baseline.
             isBaselineAligned = false
-            views.forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
+            listOf(startStop, button("Mine") { chooseMine() }, button("Settings") { settings() })
+                .forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f)) }
         }
-        val buttons = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(row(startStop, mine, classic))
-            addView(row(laptop, retention, deleteAll, about))
-        }
+        body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(buttons)
-            addView(status)
-            addView(ScrollView(this@MainActivity).apply { addView(list) }, LinearLayout.LayoutParams(-1, 0, 1f))
+            scroll = ScrollView(this@MainActivity).apply { addView(body) }
+            addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         val root = LinearLayout(this).apply {
             orientation = if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             setBackgroundColor(Color.rgb(18, 20, 24))
             setPadding(pad, pad, pad, pad)
-            if (landscape) {
-                addView(ring, LinearLayout.LayoutParams(0, -1, 1f))
-                addView(side, LinearLayout.LayoutParams(0, -1, 1f))
-            } else {
-                addView(ring, LinearLayout.LayoutParams(-1, -2))
-                addView(side, LinearLayout.LayoutParams(-1, 0, 1f))
-            }
+            addView(ring)
+            addView(side, if (landscape) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, 0, 1f))
         }
+        placeRing()
         // Android 15 and later draw edge to edge: pad by the system bars and the cutout.
         root.setOnApplyWindowInsetsListener { v, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -121,16 +114,18 @@ class MainActivity : Activity() {
         if (running) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         startStop.text = if (running) "Stop" else "Start"
-        retention.text = "Keep ${Recordings.retentionDays(this)} d"
-        classic.text = if (Options.classic(this)) "Classic: on" else "Classic: off"
-        laptop.text = if (Options.link(this)) "Laptop: on" else "Laptop: off"
-        deleteAll.isEnabled = !running
 
         val enrolled = Enrolled.devices(this)
         val all = Live.picture
-        val picture = all?.let { p -> Picture(p.movement, p.emitters.filter { it.device !in enrolled }, p.older, p.recentS) }
+        val picture = all?.let { p ->
+            Picture(p.movement, p.emitters.filter { it.device !in enrolled }, p.older, p.recentS, p.atNs, p.recentNs, p.texture)
+        }
         val hidden = (all?.emitters?.size ?: 0) - (picture?.emitters?.size ?: 0)
         ring.picture = picture
+        val chosen = picture?.emitters?.firstOrNull { it.device == selected }
+        // An emitter that left the picture can't be shown or compared.
+        if (chosen == null) selected = null
+        ring.selected = selected
         val coverage = Live.coverage
         status.text = buildString {
             append(Live.status)
@@ -149,7 +144,66 @@ class MainActivity : Activity() {
             }
             append("\nRings: signal strength, not distance. Angle: kind, not direction.")
         }
-        list.text = picture?.emitters?.take(LIST_LENGTH)?.joinToString("\n") { line(it) } ?: ""
+        val emitters = picture?.emitters.orEmpty()
+        if (chosen != null) {
+            card.text = Selection.card(chosen, picture.atNs).joinToString("\n")
+            list.text = "Closest in signal strength (strength, not location):\n\n" +
+                Selection.similar(emitters, chosen).take(LIST_LENGTH).joinToString("\n") { line(it) }
+        } else {
+            list.text = emitters.take(LIST_LENGTH).joinToString("\n") { line(it) }
+        }
+        // With a selection, its card and the list come first; otherwise the status does.
+        // Rearranged, and scrolled to the top, only when the selection changes, so
+        // an update every few seconds keeps the user's scroll position.
+        if (laidOutFor != selected) {
+            laidOutFor = selected
+            body.removeAllViews()
+            (if (chosen != null) listOf(card, list, status) else listOf(status, list)).forEach(body::addView)
+            scroll.scrollTo(0, 0)
+        }
+    }
+
+    /** A tap on the ring: a dot selects it; elsewhere clears the selection, or with none, resizes the ring. */
+    private fun tapped(device: String?) {
+        when {
+            device != null -> selected = if (device == selected) null else device
+            selected != null -> selected = null
+            else -> {
+                Options.setRingLarge(this, !Options.ringLarge(this))
+                placeRing()
+            }
+        }
+        show()
+    }
+
+    /** The ring's size: large fills the width (half the screen across); small leaves the list more room. */
+    private fun placeRing() {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val large = Options.ringLarge(this)
+        ring.layoutParams = if (landscape) {
+            LinearLayout.LayoutParams(0, -1, if (large) 1f else 0.6f)
+        } else {
+            val side = if (large) -2 else (resources.displayMetrics.widthPixels * 0.55f).toInt()
+            LinearLayout.LayoutParams(-1, side).apply { gravity = Gravity.CENTER_HORIZONTAL }
+        }
+    }
+
+    /** The settings that change less often than Start and Mine, each labeled with its current value. */
+    private fun settings() {
+        val items = listOf<Pair<String, () -> Unit>>(
+            (if (Options.classic(this)) "Classic: on" else "Classic: off") to ::toggleClassic,
+            (if (Options.link(this)) "Laptop: on" else "Laptop: off") to ::toggleLaptop,
+            "Keep ${Recordings.retentionDays(this)} d" to ::cycleRetention,
+            "Delete all" to {
+                if (Live.running) status.text = "Stop the session before deleting saved feeds." else confirmDeleteAll()
+            },
+            "About" to { About.show(this) },
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Settings")
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun line(e: Emitter): String {
