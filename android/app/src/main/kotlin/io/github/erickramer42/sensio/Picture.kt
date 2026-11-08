@@ -18,10 +18,38 @@ class Emitter(
     val tracker: String?,
     val security: String?,
     val category: String?,
+    val firstSeenNs: Long = 0,
+)
+
+/** The core's ambient texture: emitters in the recent window by kind, those first seen in it, and the newest. */
+class Texture(
+    val counts: Map<String, Long>,
+    val new: Map<String, Long>,
+    val randomizedWifi: Long,
+    val newest: List<String>,
 )
 
 /** The emitter picture at one moment, loud first, as the core described it. */
-class Picture(val movement: String, val emitters: List<Emitter>, val older: Long, val recentS: Long)
+class Picture(
+    val movement: String,
+    val emitters: List<Emitter>,
+    val older: Long,
+    val recentS: Long,
+    val atNs: Long = 0,
+    val recentNs: Long = recentS * 1_000_000_000L,
+    val texture: Texture? = null,
+)
+
+/** Short names for the core's emitter kinds and tracker networks. */
+object Labels {
+    val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA", "tpms" to "TPMS")
+
+    val TRACKERS = mapOf(
+        "apple_find_my" to "Find My",
+        "google_find_hub" to "Find Hub",
+        "dult" to "DULT tracker",
+    )
+}
 
 /** The verdict stream's lines the display uses. Other types are skipped, as ADR-0005 says readers do. */
 object VerdictStream {
@@ -58,9 +86,29 @@ object VerdictStream {
                 tracker = e.text("tracker"),
                 security = security,
                 category = e.optJSONObject("category")?.optString("category"),
+                firstSeenNs = e.optLong("first_seen_ns"),
             )
         }
-        return Picture(o.optString("movement", "unknown"), emitters, o.optLong("older"), o.optLong("recent_ns") / 1_000_000_000L)
+        val recentNs = o.optLong("recent_ns")
+        return Picture(
+            o.optString("movement", "unknown"), emitters, o.optLong("older"), recentNs / 1_000_000_000L,
+            atNs = o.optLong("at_ns"),
+            recentNs = recentNs,
+            texture = o.optJSONObject("texture")?.let(::texture),
+        )
+    }
+
+    private fun JSONObject?.counts(): Map<String, Long> =
+        this?.keys()?.asSequence()?.associateWith { optLong(it) } ?: emptyMap()
+
+    private fun texture(t: JSONObject): Texture {
+        val newest = t.optJSONArray("newest")
+        return Texture(
+            counts = t.optJSONObject("counts").counts(),
+            new = t.optJSONObject("new").counts(),
+            randomizedWifi = t.optLong("randomized_wifi"),
+            newest = (0 until (newest?.length() ?: 0)).map { newest!!.optString(it) },
+        )
     }
 
     private fun coverage(o: JSONObject): Coverage {

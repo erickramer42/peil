@@ -95,7 +95,29 @@ expression: "lines[1..]"
         "address": "not_an_address"
       }
     ],
-    "older": 1
+    "older": 1,
+    "texture": {
+      "counts": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 2,
+        "bt_classic": 0,
+        "tpms": 1
+      },
+      "randomized_wifi": 0,
+      "new": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 0,
+        "bt_classic": 0,
+        "tpms": 0
+      },
+      "newest": [
+        "tpms:0a1b2c3d",
+        "ble:cc:cc:cc:00:00:03",
+        "ble:aa:aa:aa:00:00:01"
+      ]
+    }
   },
   {
     "type": "verdicts",
@@ -178,7 +200,28 @@ expression: "lines[1..]"
         "address": "not_an_address"
       }
     ],
-    "older": 2
+    "older": 2,
+    "texture": {
+      "counts": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 1,
+        "bt_classic": 0,
+        "tpms": 1
+      },
+      "randomized_wifi": 0,
+      "new": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 0,
+        "bt_classic": 0,
+        "tpms": 0
+      },
+      "newest": [
+        "tpms:0a1b2c3d",
+        "ble:aa:aa:aa:00:00:01"
+      ]
+    }
   },
   {
     "type": "verdicts",
@@ -297,7 +340,27 @@ expression: "lines[1..]"
         "address": "ble"
       }
     ],
-    "older": 4
+    "older": 4,
+    "texture": {
+      "counts": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 1,
+        "bt_classic": 0,
+        "tpms": 0
+      },
+      "randomized_wifi": 0,
+      "new": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 1,
+        "bt_classic": 0,
+        "tpms": 0
+      },
+      "newest": [
+        "ble:dd:dd:dd:00:00:04"
+      ]
+    }
   },
   {
     "type": "verdicts",

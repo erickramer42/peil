@@ -34,6 +34,8 @@ pub struct DescribeParams {
     pub moving_mps: f64,
     /// Stopped this long, it is parked.
     pub parked_after_ns: TimeNs,
+    /// How many of the newest emitters the texture names.
+    pub newest: usize,
 }
 
 impl Default for DescribeParams {
@@ -44,6 +46,7 @@ impl Default for DescribeParams {
             recent_ns: 60 * NS_PER_S,
             moving_mps: 2.0,
             parked_after_ns: 300 * NS_PER_S,
+            newest: 5,
         }
     }
 }
@@ -218,6 +221,77 @@ pub struct Picture {
     pub emitters: Vec<Description>,
     /// Emitters seen before the recent window, not listed.
     pub older: u64,
+    /// How busy the air is, over the listed emitters.
+    pub texture: Texture,
+}
+
+/// Emitters by kind.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct KindCounts {
+    /// Wi-Fi access points.
+    pub access_point: u64,
+    /// Wi-Fi stations.
+    pub station: u64,
+    /// BLE devices, one per address, so a device that rotates its address
+    /// counts once per address.
+    pub ble: u64,
+    /// Bluetooth Classic devices.
+    pub bt_classic: u64,
+    /// Tire-pressure sensors.
+    pub tpms: u64,
+}
+
+impl KindCounts {
+    fn add(&mut self, kind: EmitterKind) {
+        let count = match kind {
+            EmitterKind::AccessPoint => &mut self.access_point,
+            EmitterKind::Station => &mut self.station,
+            EmitterKind::Ble => &mut self.ble,
+            EmitterKind::BtClassic => &mut self.bt_classic,
+            EmitterKind::Tpms => &mut self.tpms,
+        };
+        *count += 1;
+    }
+}
+
+/// The ambient texture: counts over the emitters seen within the recent
+/// window, and the newest of them. It needs no identity linking.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Texture {
+    /// The emitters seen within the recent window, by kind.
+    pub counts: KindCounts,
+    /// The Wi-Fi emitters among them whose address is randomized.
+    pub randomized_wifi: u64,
+    /// The emitters among them first seen within the window, by kind.
+    pub new: KindCounts,
+    /// The newest emitters by first sighting, latest first, then by device;
+    /// at most `DescribeParams::newest` of them.
+    pub newest: Vec<DeviceId>,
+}
+
+fn texture(emitters: &[Description], recent_from: TimeNs, newest: usize) -> Texture {
+    let mut texture = Texture::default();
+    for e in emitters {
+        texture.counts.add(e.kind);
+        if e.address == Address::Randomized {
+            texture.randomized_wifi += 1;
+        }
+        if e.first_seen_ns >= recent_from {
+            texture.new.add(e.kind);
+        }
+    }
+    let mut by_age: Vec<&Description> = emitters.iter().collect();
+    by_age.sort_by(|a, b| {
+        b.first_seen_ns
+            .cmp(&a.first_seen_ns)
+            .then_with(|| a.device.cmp(&b.device))
+    });
+    texture.newest = by_age
+        .into_iter()
+        .take(newest)
+        .map(|e| e.device.clone())
+        .collect();
+    texture
 }
 
 /// The tracker formats (ADR-0006 section 4), each with its source and the date
@@ -589,6 +663,7 @@ pub fn describe(
     emitters.sort_by(loud_first);
     Picture {
         movement: movement(&fixes, now_ns, params),
+        texture: texture(&emitters, recent_from, params.newest),
         emitters,
         older: stale,
     }

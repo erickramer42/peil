@@ -222,6 +222,35 @@ fn only_recent_emitters_are_listed_and_the_rest_are_counted() {
 }
 
 #[test]
+fn the_texture_counts_the_recent_emitters_and_names_the_newest() {
+    let events = events(&[
+        ble(T0, "aa:aa:aa:00:00:01", -60, ""),
+        ble(T0 + 100 * S, "aa:aa:aa:00:00:01", -60, ""),
+        ble(T0 + 90 * S, "bb:bb:bb:00:00:02", -60, ""),
+        ap(T0 + 95 * S, "ee:ee:ee:00:00:01", -70),
+        ap(T0 + 95 * S, "cc:cc:cc:00:00:01", -75),
+    ]);
+    let params = DescribeParams {
+        newest: 2,
+        ..DescribeParams::default()
+    };
+    let texture = describe(&events, T0 + 100 * S, &params, &VendorTable::default()).texture;
+    assert_eq!((texture.counts.ble, texture.counts.access_point), (2, 2));
+    assert_eq!(texture.randomized_wifi, 1, "0xEE is randomized, 0xCC isn't");
+    assert_eq!(
+        (texture.new.ble, texture.new.access_point),
+        (1, 2),
+        "the first BLE device was first seen before the window"
+    );
+    let newest: Vec<&str> = texture
+        .newest
+        .iter()
+        .map(sensio_core::DeviceId::as_str)
+        .collect();
+    assert_eq!(newest, ["wifi:cc:cc:cc:00:00:01", "wifi:ee:ee:ee:00:00:01"]);
+}
+
+#[test]
 fn movement_reads_moving_stopped_and_parked() {
     let params = DescribeParams::default();
     let none = VendorTable::default();

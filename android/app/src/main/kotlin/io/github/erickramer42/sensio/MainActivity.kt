@@ -139,6 +139,7 @@ class MainActivity : Activity() {
                 append("\n${picture.emitters.size} emitters in the last ${picture.recentS} s, ${picture.older} older; ${picture.movement}")
                 if (hidden > 0) append("; $hidden of yours not shown")
             }
+            all?.let { TextureText.lines(it, enrolled).forEach { line -> append('\n').append(line) } }
             if (coverage != null) {
                 CoverageText.lines(coverage, classic = Options.classic(this@MainActivity)).forEach { append('\n').append(it) }
                 append("\n${coverage.lines} lines, ${coverage.events} events, ${coverage.rejected} rejected")
@@ -153,14 +154,14 @@ class MainActivity : Activity() {
     private fun line(e: Emitter): String {
         val dbm = e.latestDbm?.let { "%4.0f".format(it) } ?: "   ?"
         val what = listOfNotNull(
-            e.tracker?.let { TRACKERS[it] ?: it },
+            e.tracker?.let { Labels.TRACKERS[it] ?: it },
             e.category,
             e.ssid?.let { "\"$it\"" },
             e.vendor,
             e.security,
             if (e.address == "randomized") "randomized" else null,
         ).joinToString(", ")
-        val head = "%-6s %s %-4s %s".format(e.band, dbm, KINDS[e.kind] ?: e.kind, e.device.substringAfter(':'))
+        val head = "%-6s %s %-4s %s".format(e.band, dbm, Labels.KINDS[e.kind] ?: e.kind, e.device.substringAfter(':'))
         return if (what.isEmpty()) head else "$head\n       $what"
     }
 
@@ -297,14 +298,6 @@ class MainActivity : Activity() {
             Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.NEARBY_WIFI_DEVICES,
             Manifest.permission.POST_NOTIFICATIONS,
-        )
-
-        private val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA", "tpms" to "TPMS")
-
-        private val TRACKERS = mapOf(
-            "apple_find_my" to "Find My",
-            "google_find_hub" to "Find Hub",
-            "dult" to "DULT tracker",
         )
     }
 }
