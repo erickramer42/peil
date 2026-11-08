@@ -6,6 +6,17 @@ A release is tagged `vMAJOR.MINOR.PATCH`, the version in `Cargo.toml` and the ap
 
 The APK is signed with one key; each release's notes and `apksigner verify --print-certs` show its certificate's SHA-256 fingerprint, which `android/release-cert.sha256` pins.
 
+## 0.2.0 - Unreleased
+
+### Added
+
+- Tile's tracker format in the describe layer: service data under one of Tile's UUIDs names the Tile network, and the app shows it as a tracker. `DESCRIBE_VERSION` is 2.
+
+### Fixed
+
+- The BLE scan restarts every 4 minutes, so Android's 5-minute scan timeout no longer turns it opportunistic and cuts the lines a minute.
+- The Mine list offers every recognized tracker whatever its strength, then the 40 loudest others, so a weak tag in a wallet can be marked without holding it to the phone.
+
 ## 0.1.0 - 2026-11-08
 
 The emitter picture around a vehicle or a building, live on the phone, with a laptop running Kismet when one is connected.
