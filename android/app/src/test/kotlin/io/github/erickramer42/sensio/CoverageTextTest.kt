@@ -32,6 +32,19 @@ class CoverageTextTest {
     }
 
     @Test
+    fun classicTurnedOffInTheSettingsReadsAsOffNotLost() {
+        val c = coverage(emptyMap(), listOf(RadioCoverage("bt_classic", "phone", "off", filteredS = 0, lostS = 240)))
+        assertEquals(
+            "Phone: Wi-Fi nothing yet, BLE nothing yet, GNSS nothing yet, Classic off",
+            CoverageText.lines(c, classic = false)[0],
+        )
+        assertEquals(
+            "Phone: Wi-Fi nothing yet, BLE nothing yet, GNSS nothing yet, Classic off (lost 4 min)",
+            CoverageText.lines(c, classic = true)[0],
+        )
+    }
+
+    @Test
     fun aLinkedLaptopShowsWhatItGivesAndADownOneSaysSo() {
         val laptop = mapOf("wifi_client" to 99 * s, "ble_advert" to 50 * s)
         val linked = coverage(mapOf("laptop" to laptop), listOf(RadioCoverage("link", "laptop", "on", 0, 0)))

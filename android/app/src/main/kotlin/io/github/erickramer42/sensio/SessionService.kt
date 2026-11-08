@@ -218,7 +218,8 @@ class SessionService : Service() {
             linked = { receiver, up -> radio("link", if (up) Feed.RadioState.ON else Feed.RadioState.OFF, receiver) },
         )
         val throttle = if (wifi.isScanThrottleEnabled) "on (4 scans per 2 minutes)" else "off"
-        if (core != null) Live.status("Session running; Wi-Fi scan throttling $throttle", running = true)
+        runningStatus = "Session running; Wi-Fi scan throttling $throttle"
+        if (core != null) Live.status(runningStatus, running = true)
         return START_NOT_STICKY
     }
 
@@ -253,10 +254,12 @@ class SessionService : Service() {
         bleRunning = true
         bleFiltered = filtered
         radio("ble", if (filtered) Feed.RadioState.FILTERED else Feed.RadioState.ON)
-        if (filtered) Live.status("Screen off: BLE sees only the listed manufacturers and tracker services")
+        // The screen-off note goes when the full scan is back; any other status stays.
+        if (filtered) Live.status(SCREEN_OFF_STATUS) else if (Live.status == SCREEN_OFF_STATUS) Live.status(runningStatus)
     }
 
     private var bleRunning = false
+    private var runningStatus = "Session running"
 
     /** The scan's new results: Android repeats a result until it's seen again. */
     private fun wifiResults() {
@@ -440,6 +443,8 @@ class SessionService : Service() {
         const val CLASSIC_EVERY_MS = 30_000L
         const val CLOCK_EVERY_MS = 60_000L
         const val RESTART_MAX_MS = 60_000L
+
+        const val SCREEN_OFF_STATUS = "Screen off: BLE sees only the listed manufacturers and tracker services"
 
         /** A core that ran this long before stopping starts the backoff over. */
         const val RESTART_RESET_MS = 300_000L

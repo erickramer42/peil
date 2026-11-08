@@ -47,9 +47,16 @@ object CoverageText {
         Watch("bt_classic", "Classic", listOf("bt_classic"), 90),
     )
 
-    fun lines(c: Coverage): List<String> {
+    /**
+     * The rows for [c]. With [classic] false the user chose not to run
+     * Classic discovery, so it reads plainly as off: a choice, not lost
+     * coverage, though the core counts it with the rest.
+     */
+    fun lines(c: Coverage, classic: Boolean = true): List<String> {
         val out = mutableListOf<String>()
-        out += "Phone: " + PHONE.joinToString(", ") { watch(c, Feed.RECEIVER, it) }
+        out += "Phone: " + PHONE.joinToString(", ") {
+            if (it.radio == "bt_classic" && !classic) "${it.label} off" else watch(c, Feed.RECEIVER, it)
+        }
         val laptops = (c.radios.filter { it.radio == "link" }.map { it.receiver } + c.lastArrival.keys)
             .filter { it != Feed.RECEIVER }
             .distinct()
