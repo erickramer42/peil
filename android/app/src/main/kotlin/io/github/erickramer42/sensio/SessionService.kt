@@ -25,10 +25,12 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.ParcelUuid
+import android.os.Parcelable
 import android.os.PowerManager
 import android.os.SystemClock
 import java.io.BufferedWriter
@@ -119,12 +121,12 @@ class SessionService : Service() {
 
         private fun found(intent: Intent) {
             if (intent.action != BluetoothDevice.ACTION_FOUND) return
-            val device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java) ?: return
+            val device = intent.parcelable<BluetoothDevice>(BluetoothDevice.EXTRA_DEVICE) ?: return
             // A BLE-only device is the BLE scan's; discovery reports it too.
             // Reading the type needs BLUETOOTH_CONNECT.
             if (device.type == BluetoothDevice.DEVICE_TYPE_LE) return
             val rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE).toInt().takeIf { it != Short.MIN_VALUE.toInt() }
-            val deviceClass = intent.getParcelableExtra(BluetoothDevice.EXTRA_CLASS, BluetoothClass::class.java)?.deviceClass
+            val deviceClass = intent.parcelable<BluetoothClass>(BluetoothDevice.EXTRA_CLASS)?.deviceClass
             data(Feed.btRaw(device.address, rssi, deviceClass))
         }
     }
@@ -455,3 +457,17 @@ class SessionService : Service() {
         val SCREEN_OFF_SERVICES = listOf(0xFD5A, 0xFEED, 0xFEEC, 0xFCB2, 0xFEAA, 0xFE2C)
     }
 }
+
+/**
+ * An intent's parcelable extra on every API level the app supports. The
+ * typed overload arrived in API 33 and is used from 34, as AndroidX's
+ * `IntentCompat` does, since it was unreliable on 33; an extra of another
+ * type reads as missing.
+ */
+private inline fun <reified T : Parcelable> Intent.parcelable(name: String): T? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        getParcelableExtra(name, T::class.java)
+    } else {
+        @Suppress("DEPRECATION")
+        getParcelableExtra(name) as? T
+    }
