@@ -54,6 +54,10 @@ class FeedTest {
             Feed.radio(10, "ble", Feed.RadioState.FILTERED),
         )
         assertEquals(
+            """{"type":"radio","boot_ns":20,"radio":"bt_classic","receiver":"phone","state":"unused"}""",
+            Feed.radio(20, "bt_classic", Feed.RadioState.UNUSED),
+        )
+        assertEquals(
             """{"type":"radio","boot_ns":3,"radio":"link","receiver":"laptop","state":"off"}""",
             Feed.radio(3, "link", Feed.RadioState.OFF, receiver = "laptop"),
         )

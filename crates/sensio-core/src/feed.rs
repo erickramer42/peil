@@ -135,11 +135,15 @@ pub enum RadioState {
     /// Receiving only part of what it could, such as BLE's screen-off
     /// filters (ADR-0004).
     Filtered,
-    /// Turned off, by the user or the system.
+    /// Turned off, by the user or the system, such as Bluetooth or
+    /// location turned off.
     Off,
     /// Asked to receive and refused, such as a failed BLE scan or a
     /// throttled Wi-Fi scan.
     Failed,
+    /// Not run, by the user's choice in the app, such as Classic discovery
+    /// left off in its settings: neither filtered nor lost.
+    Unused,
 }
 
 /// One radio's state and the time it spent short of `on`.

@@ -47,7 +47,7 @@ object Feed {
     fun slept(bootNs: Long, sleptNs: Long) = """{"type":"slept","boot_ns":$bootNs,"slept_ns":$sleptNs}"""
 
     /** A radio's states, as the core's `RadioState` names them. */
-    enum class RadioState(val wire: String) { ON("on"), FILTERED("filtered"), OFF("off"), FAILED("failed") }
+    enum class RadioState(val wire: String) { ON("on"), FILTERED("filtered"), OFF("off"), FAILED("failed"), UNUSED("unused") }
 
     /** A radio's state from [bootNs] on: `wifi`, `ble`, `gnss`, `bt_classic` or `link` (ADR-0005). */
     fun radio(bootNs: Long, radio: String, state: RadioState, receiver: String = RECEIVER) =

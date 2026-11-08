@@ -18,11 +18,12 @@ use sensio_sources::Sources;
 
 const RECEIVERS: [&str; 5] = ["phone", "laptop", "rear-pi", "Rear Pi", ""];
 const RADIOS: [&str; 4] = ["ble", "wifi", "gnss", "no good"];
-const STATES: [RadioState; 4] = [
+const STATES: [RadioState; 5] = [
     RadioState::On,
     RadioState::Filtered,
     RadioState::Off,
     RadioState::Failed,
+    RadioState::Unused,
 ];
 const BOOT_TO_UTC: TimeNs = 1_799_999_998_000_000_000;
 const MAX_OPS: usize = 500;

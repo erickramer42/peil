@@ -106,7 +106,7 @@ class SessionService : Service() {
                 BluetoothAdapter.STATE_OFF -> {
                     bleRunning = false
                     radio("ble", Feed.RadioState.OFF)
-                    radio("bt_classic", Feed.RadioState.OFF)
+                    radio("bt_classic", if (Options.classic(this@SessionService)) Feed.RadioState.OFF else Feed.RadioState.UNUSED)
                 }
                 BluetoothAdapter.STATE_ON -> startBle(filtered = !getSystemService(PowerManager::class.java).isInteractive)
             }
@@ -137,7 +137,10 @@ class SessionService : Service() {
             val adapter = getSystemService(BluetoothManager::class.java).adapter
             val allowed = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
             val state = when {
-                !Options.classic(this@SessionService) || !allowed || adapter == null || !adapter.isEnabled -> Feed.RadioState.OFF
+                // Left off in the settings is a choice, not lost coverage (ADR-0005 section 2).
+                !Options.classic(this@SessionService) -> Feed.RadioState.UNUSED
+                !allowed -> Feed.RadioState.FAILED
+                adapter == null || !adapter.isEnabled -> Feed.RadioState.OFF
                 adapter.isDiscovering -> Feed.RadioState.ON
                 runCatching { adapter.startDiscovery() }.getOrDefault(false) -> Feed.RadioState.ON
                 else -> Feed.RadioState.FAILED

@@ -33,14 +33,15 @@ class CoverageTextTest {
 
     @Test
     fun classicTurnedOffInTheSettingsReadsAsOffNotLost() {
-        val c = coverage(emptyMap(), listOf(RadioCoverage("bt_classic", "phone", "off", filteredS = 0, lostS = 240)))
+        val unused = coverage(emptyMap(), listOf(RadioCoverage("bt_classic", "phone", "unused", filteredS = 0, lostS = 0)))
         assertEquals(
             "Phone: Wi-Fi nothing yet, BLE nothing yet, GNSS nothing yet, Classic off",
-            CoverageText.lines(c, classic = false)[0],
+            CoverageText.lines(unused)[0],
         )
+        val off = coverage(emptyMap(), listOf(RadioCoverage("bt_classic", "phone", "off", filteredS = 0, lostS = 240)))
         assertEquals(
             "Phone: Wi-Fi nothing yet, BLE nothing yet, GNSS nothing yet, Classic off (lost 4 min)",
-            CoverageText.lines(c, classic = true)[0],
+            CoverageText.lines(off)[0],
         )
     }
 

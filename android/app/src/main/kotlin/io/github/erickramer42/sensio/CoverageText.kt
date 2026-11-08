@@ -50,15 +50,13 @@ object CoverageText {
     )
 
     /**
-     * The rows for [c]. With [classic] false the user chose not to run
-     * Classic discovery, so it reads plainly as off: a choice, not lost
-     * coverage, though the core counts it with the rest.
+     * The rows for [c]. A radio the user chose not to run (`unused`, such as
+     * Classic discovery left off in the settings) reads plainly as off: a
+     * choice, which the core doesn't count as lost.
      */
-    fun lines(c: Coverage, classic: Boolean = true): List<String> {
+    fun lines(c: Coverage): List<String> {
         val out = mutableListOf<String>()
-        out += "Phone: " + PHONE.joinToString(", ") {
-            if (it.radio == "bt_classic" && !classic) "${it.label} off" else watch(c, Feed.RECEIVER, it)
-        }
+        out += "Phone: " + PHONE.joinToString(", ") { watch(c, Feed.RECEIVER, it) }
         val laptops = (c.radios.filter { it.radio == "link" }.map { it.receiver } + c.lastArrival.keys)
             .filter { it != Feed.RECEIVER }
             .distinct()
@@ -84,14 +82,14 @@ object CoverageText {
     private fun watch(c: Coverage, receiver: String, w: Watch): String {
         val radio = c.radio(w.radio, receiver)
         val state = when (radio?.state) {
-            "off" -> " off"
+            "off", "unused" -> " off"
             "failed" -> " failing"
             "filtered" -> " filtered"
             else -> ""
         }
         val last = w.kinds.mapNotNull { c.lastArrival[receiver]?.get(it) }.maxOrNull()
         val age = when {
-            radio?.state == "off" || radio?.state == "failed" -> ""
+            radio?.state in setOf("off", "failed", "unused") -> ""
             last == null || c.bootNs == null -> " nothing yet"
             else -> {
                 val s = maxOf(0L, (c.bootNs - last) / 1_000_000_000L)

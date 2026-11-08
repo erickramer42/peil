@@ -628,7 +628,7 @@ impl<N: Normalize> Live<N> {
 fn close_interval(track: &mut RadioCoverage, now: TimeNs) {
     let spent = now.saturating_sub(track.since_boot_ns).max(0);
     match track.state {
-        RadioState::On => {}
+        RadioState::On | RadioState::Unused => {}
         RadioState::Filtered => track.filtered_ns = track.filtered_ns.saturating_add(spent),
         RadioState::Off | RadioState::Failed => {
             track.lost_ns = track.lost_ns.saturating_add(spent);

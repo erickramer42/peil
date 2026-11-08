@@ -753,6 +753,39 @@ fn a_radios_filtered_and_lost_time_counts_up_to_each_answer() {
 }
 
 #[test]
+fn a_radio_left_unused_counts_as_neither_filtered_nor_lost() {
+    let s = 1_000_000_000;
+    let lines = live(
+        &feed(&[
+            radio(0, "bt_classic", "unused"),
+            judge_at(100 * s),
+            radio(100 * s, "bt_classic", "off"),
+            judge_at(130 * s),
+        ]),
+        false,
+    );
+    assert!(rejections(&lines).is_empty(), "{lines:?}");
+    let seen: Vec<_> = coverages(&lines)
+        .iter()
+        .map(|c| {
+            (
+                c.radios[0].state,
+                c.radios[0].filtered_ns,
+                c.radios[0].lost_ns,
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen[..2],
+        [
+            (RadioState::Unused, 0, 0),
+            // Bluetooth turned off is lost coverage again.
+            (RadioState::Off, 0, 30 * s),
+        ]
+    );
+}
+
+#[test]
 fn a_radio_line_that_goes_back_or_names_badly_is_rejected() {
     let lines = live(
         &feed(&[
