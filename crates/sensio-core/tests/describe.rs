@@ -158,6 +158,53 @@ fn the_tracker_formats_are_recognized() {
     );
 }
 
+fn classic(t: i64, addr: &str, rssi: i16, class: u32) -> String {
+    format!(
+        r#"{{"t_ns":{t},"source":"sensio","kind":"bt_classic","addr":"{addr}","rssi_dbm":{rssi},"device_class":{class}}}"#
+    )
+}
+
+#[test]
+fn a_classic_devices_category_comes_from_its_class_of_device() {
+    // Service bits set where a real device would set them; they don't count.
+    let services = 0x24_0000;
+    let events = events(&[
+        classic(T0, "cc:cc:cc:00:00:01", -50, services | (4 << 8) | (8 << 2)),
+        classic(T0, "cc:cc:cc:00:00:02", -51, services | (4 << 8) | (2 << 2)),
+        classic(T0, "cc:cc:cc:00:00:03", -52, (2 << 8) | (3 << 2)),
+        classic(T0, "cc:cc:cc:00:00:04", -53, (6 << 8) | (1 << 5) | (1 << 7)),
+        classic(T0, "cc:cc:cc:00:00:05", -54, (6 << 8) | (1 << 7)),
+        classic(T0, "cc:cc:cc:00:00:06", -55, services | (4 << 8) | (3 << 2)),
+        classic(T0, "cc:cc:cc:00:00:07", -56, 0x1f << 8),
+        classic(T0, "cc:cc:cc:00:00:08", -57, services),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let categories: Vec<Option<(&str, &str)>> = picture
+        .emitters
+        .iter()
+        .map(|e| e.category.map(|c| (c.category, c.entry)))
+        .collect();
+    assert_eq!(
+        categories,
+        [
+            Some(("car-audio", "cod-av-car-audio")),
+            Some(("hands-free", "cod-av-hands-free")),
+            Some(("phone", "cod-phone")),
+            Some(("camera-class", "cod-imaging-camera")),
+            Some(("imaging", "cod-imaging")),
+            Some(("audio-video", "cod-audio-video")),
+            None,
+            None,
+        ],
+        "uncategorized and miscellaneous classes say nothing"
+    );
+}
+
 #[test]
 fn only_recent_emitters_are_listed_and_the_rest_are_counted() {
     let events = events(&[

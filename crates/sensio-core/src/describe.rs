@@ -258,6 +258,56 @@ fn tracker(
     None
 }
 
+/// A Bluetooth Classic device's category from its Class of Device, or none
+/// when the class says nothing (Miscellaneous, Uncategorized, or a major
+/// class without an entry).
+///
+/// Source: the Bluetooth SIG's assigned numbers, `class_of_device.yaml`,
+/// bitbucket.org/bluetooth-SIG/public/raw/main/assigned_numbers/core/class_of_device.yaml
+/// (read 2026-11-07). Its service classes are bits 13 to 23, so the major
+/// device class (0 to 31) is bits 8 to 12 and the minor class bits 2 to 7;
+/// Imaging's minor field is a set of bits (4 Display, 5 Camera, 6 Scanner,
+/// 7 Printer). The entries, by major class (minor class):
+///
+/// - Audio/Video (4): Car Audio (8) is `car-audio`; Hands-free Device (2) is
+///   `hands-free`; Video Camera (12) and Camcorder (13) are `camera-class`;
+///   Wearable Headset (1), Microphone (4), Loudspeaker (5), Headphones (6),
+///   Portable Audio (7), `HiFi` Audio (10) and Hearing Aid (19) are `audio`;
+///   Set-top box (9), VCR (11), Video Monitor (14), Video Display and
+///   Loudspeaker (15) and Video Conferencing (16) are `video`; Gaming/Toy
+///   (18) is `toy`; Glasses (20) is `wearable`; any other minor class is
+///   `audio-video`.
+/// - Imaging (6): with the Camera bit, `camera-class`; otherwise `imaging`.
+/// - Computer (1) `computer`, Phone (2) `phone`, LAN/Network Access Point
+///   (3) `network-access-point`, Peripheral (5) `peripheral`, Wearable (7)
+///   `wearable`, Toy (8) `toy`, Health (9) `health`, whatever the minor class.
+fn classic_category(class: u32) -> Option<Category> {
+    let major = (class >> 8) & 0x1f;
+    let minor = (class >> 2) & 0x3f;
+    let (category, entry) = match (major, minor) {
+        (4, 8) => ("car-audio", "cod-av-car-audio"),
+        (4, 2) => ("hands-free", "cod-av-hands-free"),
+        (4, 12) => ("camera-class", "cod-av-video-camera"),
+        (4, 13) => ("camera-class", "cod-av-camcorder"),
+        (4, 1 | 4 | 5 | 6 | 7 | 10 | 19) => ("audio", "cod-av-audio"),
+        (4, 9 | 11 | 14 | 15 | 16) => ("video", "cod-av-video"),
+        (4, 18) => ("toy", "cod-av-gaming-toy"),
+        (4, 20) => ("wearable", "cod-av-glasses"),
+        (4, _) => ("audio-video", "cod-audio-video"),
+        (6, _) if class & (1 << 5) != 0 => ("camera-class", "cod-imaging-camera"),
+        (6, _) => ("imaging", "cod-imaging"),
+        (1, _) => ("computer", "cod-computer"),
+        (2, _) => ("phone", "cod-phone"),
+        (3, _) => ("network-access-point", "cod-network-access-point"),
+        (5, _) => ("peripheral", "cod-peripheral"),
+        (7, _) => ("wearable", "cod-wearable"),
+        (8, _) => ("toy", "cod-toy"),
+        (9, _) => ("health", "cod-health"),
+        _ => return None,
+    };
+    Some(Category { category, entry })
+}
+
 /// A 16-bit UUID's four hex digits, lowercase, from its short form or its
 /// 128-bit form on the Bluetooth base UUID.
 fn short_uuid(uuid: &str) -> Option<String> {
@@ -403,6 +453,7 @@ struct Track {
     company_ids: Vec<u16>,
     tracker: Option<(Tracker, &'static str)>,
     security: Option<WifiSecurity>,
+    device_class: Option<u32>,
 }
 
 impl Track {
@@ -450,6 +501,10 @@ impl Track {
                     self.tracker = Some(found);
                 }
             }
+            EventKind::BtClassic {
+                device_class: Some(class),
+                ..
+            } => self.device_class = Some(*class),
             _ => {}
         }
     }
@@ -515,6 +570,7 @@ pub fn describe(
             company_ids: Vec::new(),
             tracker: None,
             security: None,
+            device_class: None,
         });
         track.observe(event, kind, dbm, t >= recent_from);
     }
@@ -588,10 +644,13 @@ fn description(
         company_ids: track.company_ids,
         tracker: track.tracker.map(|(t, _)| t),
         security: track.security,
-        category: track.tracker.map(|(_, entry)| Category {
-            category: "tracker",
-            entry,
-        }),
+        category: match track.tracker {
+            Some((_, entry)) => Some(Category {
+                category: "tracker",
+                entry,
+            }),
+            None => track.device_class.and_then(classic_category),
+        },
     }
 }
 
