@@ -134,6 +134,24 @@ fn the_tracker_formats_are_recognized() {
             -63,
             r#","manufacturer_data":[{"company_id":76,"data":"1005aa"}]"#,
         ),
+        ble(
+            T0,
+            "aa:aa:aa:00:00:05",
+            -64,
+            r#","service_data":[{"uuid":"FEED","data":"0102"}]"#,
+        ),
+        ble(
+            T0,
+            "aa:aa:aa:00:00:06",
+            -65,
+            r#","service_data":[{"uuid":"0000feec-0000-1000-8000-00805f9b34fb","data":"01"}]"#,
+        ),
+        ble(
+            T0,
+            "aa:aa:aa:00:00:07",
+            -66,
+            r#","service_data":[{"uuid":"fd84","data":"01"}]"#,
+        ),
     ]);
     let picture = describe(
         &events,
@@ -148,14 +166,63 @@ fn the_tracker_formats_are_recognized() {
             Some(Tracker::AppleFindMy),
             Some(Tracker::GoogleFindHub),
             Some(Tracker::Dult),
-            None
+            None,
+            Some(Tracker::Tile),
+            Some(Tracker::Tile),
+            Some(Tracker::Tile),
         ]
+    );
+    assert_eq!(
+        picture.emitters[4].category.map(|c| (c.category, c.entry)),
+        Some(("tracker", "tile"))
     );
     assert_eq!(picture.emitters[0].company_ids, [0x004c]);
     assert_eq!(
         picture.emitters[0].category.map(|c| (c.category, c.entry)),
         Some(("tracker", "apple-find-my"))
     );
+}
+
+#[test]
+fn service_data_under_other_uuids_names_no_tracker() {
+    // 0xFEEE is next to Tile's 0xFEED; 0xFD00 and 0xFE2C belong to other
+    // companies; a 128-bit UUID off the Bluetooth base isn't a short one; a
+    // Tile UUID in manufacturer data's place isn't service data.
+    let events = events(&[
+        ble(
+            T0,
+            "aa:aa:aa:00:00:01",
+            -60,
+            r#","service_data":[{"uuid":"feee","data":"01"}]"#,
+        ),
+        ble(
+            T0,
+            "aa:aa:aa:00:00:02",
+            -61,
+            r#","service_data":[{"uuid":"fd00","data":"01"},{"uuid":"fe2c","data":"01"}]"#,
+        ),
+        ble(
+            T0,
+            "aa:aa:aa:00:00:03",
+            -62,
+            r#","service_data":[{"uuid":"0000feed-0000-1000-8000-00805f9b34fc","data":"01"}]"#,
+        ),
+        ble(
+            T0,
+            "aa:aa:aa:00:00:04",
+            -63,
+            r#","manufacturer_data":[{"company_id":65261,"data":"01"}]"#,
+        ),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    assert_eq!(picture.emitters.len(), 4);
+    assert!(picture.emitters.iter().all(|e| e.tracker.is_none()));
+    assert!(picture.emitters.iter().all(|e| e.category.is_none()));
 }
 
 fn classic(t: i64, addr: &str, rssi: i16, class: u32) -> String {

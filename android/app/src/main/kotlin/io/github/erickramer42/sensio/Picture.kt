@@ -48,6 +48,7 @@ object Labels {
         "apple_find_my" to "Find My",
         "google_find_hub" to "Find Hub",
         "dult" to "DULT tracker",
+        "tile" to "Tile",
     )
 }
 

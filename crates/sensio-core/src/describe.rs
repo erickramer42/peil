@@ -18,7 +18,7 @@ use crate::judge::order_key;
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 1;
+pub const DESCRIBE_VERSION: u32 = 2;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -131,6 +131,8 @@ pub enum Tracker {
     GoogleFindHub,
     /// An accessory following the DULT draft, whatever its network.
     Dult,
+    /// Tile's network.
+    Tile,
 }
 
 /// A hardware category, with the table entry that matched (ADR-0006 section 4).
@@ -308,6 +310,10 @@ fn texture(emitters: &[Description], recent_from: TimeNs, newest: usize) -> Text
 ///   (read 2026-11-07).
 /// - `dult`: service data under UUID 0xFCB2; draft-ietf-dult-accessory-protocol-01,
 ///   section 3.6, an Internet-Draft (work in progress, read 2026-11-07).
+/// - `tile`: service data under UUID 0xFEED, 0xFEEC or 0xFD84, each assigned
+///   to Tile, Inc.; the Bluetooth SIG's assigned numbers, `member_uuids.yaml`,
+///   bitbucket.org/bluetooth-SIG/public/raw/main/assigned_numbers/uuids/member_uuids.yaml
+///   (read 2026-11-08).
 fn tracker(
     manufacturer: &[crate::event::ManufacturerData],
     service: &[ServiceData],
@@ -327,6 +333,7 @@ fn tracker(
                 return Some((Tracker::GoogleFindHub, "google-find-hub"));
             }
             Some("fcb2") => return Some((Tracker::Dult, "dult")),
+            Some("feed" | "feec" | "fd84") => return Some((Tracker::Tile, "tile")),
             _ => {}
         }
     }
