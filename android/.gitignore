@@ -6,3 +6,5 @@
 /local.properties
 # The core, built by build-core.sh; never committed.
 /app/src/main/jniLibs/
+# The notices of the core's crates, written by build-core.sh.
+/app/src/main/assets/licenses/RUST-CRATES

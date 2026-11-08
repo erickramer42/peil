@@ -32,3 +32,9 @@ out="$here/app/src/main/jniLibs/arm64-v8a"
 mkdir -p "$out"
 cp target/aarch64-linux-android/release/peil "$out/libsensio.so"
 ls -l "$out/libsensio.so"
+
+# The notices of the crates linked into the core, which ship with it in the
+# APK; the About page shows them.
+py=python
+command -v python >/dev/null || py=python3
+"$py" -I packaging/crate_licenses.py --target aarch64-linux-android --out "$here/app/src/main/assets/licenses/RUST-CRATES"

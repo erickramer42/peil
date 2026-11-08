@@ -11,10 +11,13 @@ import android.widget.TextView
  * (MIT or Apache-2.0, at the recipient's option), and the libraries packaged
  * in the APK, under the same Apache-2.0 text, from the APK's own assets. Apache-2.0 asks that anyone who receives the program gets its
  * text. The list of libraries is the one `checkPackagedLibraries` allows.
+ * The core is built from Rust crates used under MIT, whose notices go with
+ * every copy; build-core.sh writes them into the assets beside the core.
  */
 object About {
     const val MIT = "licenses/LICENSE-MIT"
     const val APACHE = "licenses/LICENSE-APACHE-2.0"
+    const val CRATES = "licenses/RUST-CRATES"
 
     fun text(context: Context): String {
         fun asset(path: String) = context.assets.open(path).bufferedReader().use { it.readText() }
@@ -30,6 +33,9 @@ object About {
             append(asset(MIT).trim())
             append("\n\n---- The Apache License, Version 2.0 ----\n\n")
             append(asset(APACHE).trim())
+            append("\n\n---- The core's Rust crates ----\n\n")
+            // A build without build-core.sh has no core either; say so rather than fail.
+            append(runCatching { asset(CRATES).trim() }.getOrDefault("This build doesn't include the core."))
             append('\n')
         }
     }
