@@ -64,10 +64,10 @@ for scheme in "v1 scheme (JAR signing): false" "v2 scheme (APK Signature Scheme 
     "v3 scheme (APK Signature Scheme v3): true"; do
     grep -qF "Verified using $scheme" <<<"$verify" || fail "expected 'Verified using $scheme'"
 done
-# apksigner names a signer "Signer #1" or, in some versions, by the SDK range it
-# covers ("Signer (minSdkVersion=31, ...)"); either way the APK must carry one
-# certificate. The output is printed on failure: it holds certificates, which are public.
-cert="$(sed -n 's/^Signer.* certificate SHA-256 digest: //p' <<<"$verify" | sort -u)"
+# apksigner names a signer "Signer #1" (build-tools 36.0) or "V3.0 Signer:"
+# (later versions); either way the APK must carry one certificate. The output
+# is printed on failure: it holds certificates, which are public.
+cert="$(sed -n -E 's/^(V[0-9.]+ )?Signer.* certificate SHA-256 digest: //p' <<<"$verify" | sort -u)"
 if [ -z "$cert" ] || [ "$(wc -l <<<"$cert")" != 1 ]; then
     echo "$verify" >&2
     fail "expected one signing certificate, found: ${cert:-none}"
