@@ -144,6 +144,7 @@ class MainActivity : Activity() {
                 CoverageText.lines(coverage, classic = Options.classic(this@MainActivity)).forEach { append('\n').append(it) }
                 append("\n${coverage.lines} lines, ${coverage.events} events, ${coverage.rejected} rejected")
                 if (coverage.withheld + coverage.dropped > 0) append(", ${coverage.dropped} not passed to the core")
+                if (coverage.late > 0) append(", ${coverage.late} over 10 min late")
                 if (coverage.sleptS > 0) append(", asleep ${coverage.sleptS} s")
             }
             append("\nRings: signal strength, not distance. Angle: kind, not direction.")

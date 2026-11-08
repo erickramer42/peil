@@ -17,8 +17,8 @@ use sensio_core::feed::{
     VerdictLine, read_bounded_line,
 };
 use sensio_core::{
-    Event, EventKind, Fatal, Live, Normalize, PersistenceRule, RunError, Verdict, judge,
-    parse_jsonl, run,
+    DescribeParams, Event, EventKind, Fatal, LATENESS_NS, Live, Normalize, PersistenceRule,
+    Picture, RunError, VendorTable, Verdict, describe, judge, parse_jsonl, run,
 };
 
 const FEED: &str = include_str!("fixtures/drive.feed");
@@ -72,6 +72,81 @@ fn answers(lines: &[VerdictLine]) -> Vec<&[Verdict]> {
             _ => None,
         })
         .collect()
+}
+
+fn pictures(lines: &[VerdictLine]) -> Vec<(i64, &Picture)> {
+    lines
+        .iter()
+        .filter_map(|line| match line {
+            VerdictLine::Emitters { at_ns, picture, .. } => Some((*at_ns, picture)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The events in arrival order with their times held to the lateness window
+/// as ADR-0005 section 3 says, each with the latest event time after it.
+fn held_to_window(events: &[Event]) -> Vec<(Event, i64)> {
+    let mut frontier: Option<i64> = None;
+    events
+        .iter()
+        .map(|event| {
+            let mut event = event.clone();
+            if let Some(f) = frontier {
+                event.t_ns = event.t_ns.max(f - LATENESS_NS);
+            }
+            let f = frontier.map_or(event.t_ns, |f| f.max(event.t_ns));
+            frontier = Some(f);
+            (event, f)
+        })
+        .collect()
+}
+
+/// A drive of fixes, BLE adverts (some a tracker's), access points and
+/// stations sharing addresses with them, over up to eight hours, from two
+/// receivers; times wander back by up to 20 minutes, so some events arrive
+/// within the lateness window and some beyond it.
+fn generated_drive() -> impl Strategy<Value = Vec<Event>> {
+    let kind = prop_oneof![
+        (0u8..6).prop_map(|k| format!(
+            r#"{{"kind":"gnss_fix","lat_deg":{},"lon_deg":10.0}}"#,
+            60.0 + f64::from(k) * 0.01
+        )),
+        (0u8..6, -100i16..-30, any::<bool>()).prop_map(|(n, dbm, tag)| {
+            let data = if tag {
+                r#","manufacturer_data":[{"company_id":76,"data":"1219"}]"#
+            } else {
+                ""
+            };
+            format!(r#"{{"kind":"ble_advert","addr":"aa:aa:aa:00:00:0{n}","rssi_dbm":{dbm}{data}}}"#)
+        }),
+        (0u8..4, -100i16..-30, any::<bool>()).prop_map(|(n, dbm, named)| {
+            let ssid = if named { r#""net""# } else { "null" };
+            format!(
+                r#"{{"kind":"wifi_ap","bssid":"cc:cc:cc:00:00:0{n}","ssid":{ssid},"freq_mhz":2437,"rssi_dbm":{dbm}}}"#
+            )
+        }),
+        (0u8..4, -100i16..-30).prop_map(|(n, dbm)| format!(
+            r#"{{"kind":"wifi_client","addr":"cc:cc:cc:00:00:0{n}","bssid":null,"freq_mhz":2437,"rssi_dbm":{dbm}}}"#
+        )),
+    ];
+    let receiver = prop_oneof![Just(None), Just(Some("laptop".to_owned()))];
+    proptest::collection::vec((0i64..240, 0i64..1200, kind, receiver), 1..120).prop_map(|steps| {
+        let mut t = BOOT_TO_UTC + 1_000_000_000;
+        steps
+            .into_iter()
+            .map(|(step_s, back_s, kind, receiver)| {
+                t += step_s * 1_000_000_000;
+                let kind: EventKind = serde_json::from_str(&kind).expect("a generated kind parses");
+                Event {
+                    t_ns: (t - back_s * 1_000_000_000).max(BOOT_TO_UTC),
+                    source: "sensio".to_owned(),
+                    receiver,
+                    kind,
+                }
+            })
+            .collect()
+    })
 }
 
 fn rejections(lines: &[VerdictLine]) -> Vec<(usize, Option<u64>, &str)> {
@@ -186,30 +261,90 @@ fn a_crlf_feed_gives_the_same_stream() {
 }
 
 proptest! {
-    /// ADR-0005 section 4: each answer is the judge over the events that
-    /// arrived before its `judge` line, in whatever order they arrived.
+    /// ADR-0005 section 4: each answer is the judge, and its picture the
+    /// describe layer, over the events that arrived before its `judge`
+    /// line, in whatever order they arrived, with their times held to the
+    /// lateness window (section 3).
     #[test]
     fn each_answer_is_the_judge_over_the_events_before_it(
-        (events, judge_after) in prop_oneof![Just(DRIVE), Just(WIFI_DRIVE)]
-            .prop_map(|text| parse_jsonl(Cursor::new(text)).expect("the fixture parses"))
-            .prop_flat_map(|events| {
-                let n = events.len();
-                (Just(events).prop_shuffle(), proptest::collection::vec(any::<bool>(), n))
-            })
+        (events, judge_after) in prop_oneof![
+            prop_oneof![Just(DRIVE), Just(WIFI_DRIVE)]
+                .prop_map(|text| parse_jsonl(Cursor::new(text)).expect("the fixture parses"))
+                .prop_flat_map(|events| Just(events).prop_shuffle()),
+            generated_drive(),
+        ]
+        .prop_flat_map(|events| {
+            let n = events.len();
+            (Just(events), proptest::collection::vec(any::<bool>(), n))
+        })
     ) {
         let rule = PersistenceRule::default();
+        let params = DescribeParams::default();
+        let vendors = VendorTable::default();
         let lines = live(&drive_feed(&events, &judge_after), false);
+        let held = held_to_window(&events);
+        let held_events: Vec<Event> = held.iter().map(|(e, _)| e.clone()).collect();
+        // Each `judge` line is at boot time 0, before every event, so its
+        // time is the window's edge.
+        let answer = |n: usize| {
+            let at_ns = BOOT_TO_UTC.max(held[n - 1].1 - LATENESS_NS);
+            (
+                judge(&held_events[..n], &rule),
+                (at_ns, describe(&held_events[..n], at_ns, &params, &vendors)),
+            )
+        };
         let mut expected = Vec::new();
         for (i, &judged) in judge_after.iter().enumerate() {
             if judged {
-                expected.push(judge(&events[..=i], &rule));
+                expected.push(answer(i + 1));
             }
         }
-        expected.push(judge(&events, &rule));
-        let got: Vec<Vec<Verdict>> = answers(&lines).into_iter().map(<[Verdict]>::to_vec).collect();
+        expected.push(answer(events.len()));
+        let got: Vec<(Vec<Verdict>, (i64, Picture))> = answers(&lines)
+            .into_iter()
+            .map(<[Verdict]>::to_vec)
+            .zip(pictures(&lines).into_iter().map(|(at, p)| (at, p.clone())))
+            .collect();
         prop_assert_eq!(got, expected);
         prop_assert!(rejections(&lines).is_empty());
     }
+}
+
+#[test]
+fn an_event_later_than_the_window_takes_its_edge_and_is_counted() {
+    let minute = 60_000_000_000;
+    let other = r#"{"kind":"ble_advert","addr":"bb:bb:bb:00:00:02","rssi_dbm":-70}"#;
+    let lines = live(
+        &feed(&[
+            line(1, 20 * minute, None, BLE),
+            // 15 minutes behind the latest event, 5 beyond the window.
+            line(2, 5 * minute, None, other),
+            // 5 minutes behind: inside the window, so its own time stands.
+            line(3, 15 * minute, None, other),
+            // Within a minute of its last sighting, so the picture lists it.
+            judge_at(15 * minute + 30_000_000_000),
+        ]),
+        false,
+    );
+    let (_, picture) = pictures(&lines)[0];
+    let late = picture
+        .emitters
+        .iter()
+        .find(|e| e.device.as_str() == "ble:bb:bb:bb:00:00:02")
+        .expect("the late device is listed");
+    assert_eq!(late.first_seen_ns, BOOT_TO_UTC + 10 * minute);
+    assert_eq!(late.last_seen_ns, BOOT_TO_UTC + 15 * minute);
+    assert_eq!(coverages(&lines)[0].sources[0].late, 1);
+}
+
+#[test]
+fn a_judge_line_earlier_than_the_window_answers_at_its_edge() {
+    let minute = 60_000_000_000;
+    let lines = live(
+        &feed(&[line(1, 30 * minute, None, BLE), judge_at(minute)]),
+        false,
+    );
+    assert_eq!(pictures(&lines)[0].0, BOOT_TO_UTC + 20 * minute);
 }
 
 #[test]

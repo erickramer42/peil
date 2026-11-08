@@ -17,4 +17,4 @@ pub mod live;
 pub use describe::{DESCRIBE_VERSION, DescribeParams, Picture, VendorTable, describe};
 pub use event::{DeviceId, Event, EventKind, ParseError, TimeNs, parse_jsonl};
 pub use judge::{PersistenceRule, Place, RULE_SET_VERSION, Verdict, judge};
-pub use live::{Fatal, Live, Normalize, RunError, run};
+pub use live::{Fatal, LATENESS_NS, Live, Normalize, RunError, run};

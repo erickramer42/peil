@@ -104,12 +104,138 @@ pub struct Verdict {
     pub places: Vec<Place>,
 }
 
+#[derive(Debug, Clone)]
 struct Track {
     first_seen_ns: TimeNs,
     last_seen_ns: TimeNs,
     sightings: usize,
     unlocated_sightings: usize,
     places: Vec<Place>,
+}
+
+impl Track {
+    fn new(t: TimeNs) -> Self {
+        Self {
+            first_seen_ns: t,
+            last_seen_ns: t,
+            sightings: 0,
+            unlocated_sightings: 0,
+            places: Vec::new(),
+        }
+    }
+
+    fn observe(&mut self, t: TimeNs, last_fix: Option<Fix>, rule: &PersistenceRule) {
+        self.last_seen_ns = t;
+        self.sightings += 1;
+        let position = last_fix
+            .filter(|&(fix_t, _, _)| t.saturating_sub(fix_t) <= rule.max_fix_age_ns)
+            .map(|(_, lat, lon)| (lat, lon));
+        let Some((lat, lon)) = position else {
+            self.unlocated_sightings += 1;
+            return;
+        };
+        let is_new_place = self
+            .places
+            .iter()
+            .all(|p| geo::distance_m(p.lat_deg, p.lon_deg, lat, lon) >= rule.place_separation_m);
+        if is_new_place {
+            self.places.push(Place {
+                first_seen_ns: t,
+                lat_deg: lat,
+                lon_deg: lon,
+            });
+        }
+    }
+
+    fn verdict(&self, device: &DeviceId, rule: &PersistenceRule) -> Option<Verdict> {
+        let fires = self.places.len() >= rule.min_places
+            && self.last_seen_ns.saturating_sub(self.first_seen_ns) >= rule.min_span_ns;
+        fires.then(|| Verdict {
+            device: device.clone(),
+            rule: "persistence.places",
+            rule_set_version: RULE_SET_VERSION,
+            first_seen_ns: self.first_seen_ns,
+            last_seen_ns: self.last_seen_ns,
+            sightings: self.sightings,
+            unlocated_sightings: self.unlocated_sightings,
+            places: self.places.clone(),
+        })
+    }
+}
+
+/// A fix's time, latitude and longitude.
+type Fix = (TimeNs, f64, f64);
+
+/// The order the judge reads events in: by time, a GNSS fix before a
+/// sighting at the same instant, then by input order.
+pub(crate) fn order_key(event: &Event, input: usize) -> (TimeNs, u8, usize) {
+    let fix_first = u8::from(!matches!(event.kind, EventKind::GnssFix { .. }));
+    (event.t_ns, fix_first, input)
+}
+
+/// The judge's state over events read in its order ([`order_key`]); the
+/// live judge folds a session into it as the session goes.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct JudgeFold {
+    last_fix: Option<Fix>,
+    tracks: BTreeMap<DeviceId, Track>,
+}
+
+impl JudgeFold {
+    /// Reads the next event in the judge's order.
+    pub(crate) fn observe(&mut self, event: &Event, rule: &PersistenceRule) {
+        if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+            self.last_fix = Some((event.t_ns, lat_deg, lon_deg));
+            return;
+        }
+        let Some(device) = event.kind.device() else {
+            return;
+        };
+        let t = event.t_ns;
+        self.tracks
+            .entry(device)
+            .or_insert_with(|| Track::new(t))
+            .observe(t, self.last_fix, rule);
+    }
+
+    /// The verdicts over what was read and then `tail`, which follows it in
+    /// the judge's order, ordered by device; the fold itself is unchanged.
+    /// Only the devices `tail` touches are copied.
+    pub(crate) fn verdicts_with<'a>(
+        &self,
+        tail: impl IntoIterator<Item = &'a Event>,
+        rule: &PersistenceRule,
+    ) -> Vec<Verdict> {
+        let mut last_fix = self.last_fix;
+        let mut touched: BTreeMap<DeviceId, Track> = BTreeMap::new();
+        for event in tail {
+            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+                last_fix = Some((event.t_ns, lat_deg, lon_deg));
+                continue;
+            }
+            let Some(device) = event.kind.device() else {
+                continue;
+            };
+            let t = event.t_ns;
+            let track = match touched.entry(device) {
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    let base = self.tracks.get(entry.key()).cloned();
+                    entry.insert(base.unwrap_or_else(|| Track::new(t)))
+                }
+            };
+            track.observe(t, last_fix, rule);
+        }
+        let mut verdicts: Vec<Verdict> = self
+            .tracks
+            .iter()
+            .filter(|(device, _)| !touched.contains_key(*device))
+            .chain(touched.iter())
+            .filter_map(|(device, track)| track.verdict(device, rule))
+            .collect();
+        verdicts.sort_by(|a, b| a.device.cmp(&b.device));
+        verdicts
+    }
 }
 
 /// Judges a session's events and returns its verdicts, ordered by device.
@@ -119,68 +245,10 @@ struct Track {
 #[must_use]
 pub fn judge(events: &[Event], rule: &PersistenceRule) -> Vec<Verdict> {
     let mut order: Vec<usize> = (0..events.len()).collect();
-    order.sort_by_key(|&i| {
-        let fix_first = u8::from(!matches!(events[i].kind, EventKind::GnssFix { .. }));
-        (events[i].t_ns, fix_first, i)
-    });
-
-    let mut last_fix: Option<(TimeNs, f64, f64)> = None;
-    let mut tracks: BTreeMap<DeviceId, Track> = BTreeMap::new();
-
-    for event in order.into_iter().map(|i| &events[i]) {
-        if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
-            last_fix = Some((event.t_ns, lat_deg, lon_deg));
-            continue;
-        }
-        let Some(device) = event.kind.device() else {
-            continue;
-        };
-        let t = event.t_ns;
-        let track = tracks.entry(device).or_insert(Track {
-            first_seen_ns: t,
-            last_seen_ns: t,
-            sightings: 0,
-            unlocated_sightings: 0,
-            places: Vec::new(),
-        });
-        track.last_seen_ns = t;
-        track.sightings += 1;
-
-        let position = last_fix
-            .filter(|&(fix_t, _, _)| t.saturating_sub(fix_t) <= rule.max_fix_age_ns)
-            .map(|(_, lat, lon)| (lat, lon));
-        let Some((lat, lon)) = position else {
-            track.unlocated_sightings += 1;
-            continue;
-        };
-        let is_new_place = track
-            .places
-            .iter()
-            .all(|p| geo::distance_m(p.lat_deg, p.lon_deg, lat, lon) >= rule.place_separation_m);
-        if is_new_place {
-            track.places.push(Place {
-                first_seen_ns: t,
-                lat_deg: lat,
-                lon_deg: lon,
-            });
-        }
+    order.sort_by_key(|&i| order_key(&events[i], i));
+    let mut fold = JudgeFold::default();
+    for i in order {
+        fold.observe(&events[i], rule);
     }
-
-    tracks
-        .into_iter()
-        .filter(|(_, track)| {
-            track.places.len() >= rule.min_places
-                && track.last_seen_ns.saturating_sub(track.first_seen_ns) >= rule.min_span_ns
-        })
-        .map(|(device, track)| Verdict {
-            device,
-            rule: "persistence.places",
-            rule_set_version: RULE_SET_VERSION,
-            first_seen_ns: track.first_seen_ns,
-            last_seen_ns: track.last_seen_ns,
-            sightings: track.sightings,
-            unlocated_sightings: track.unlocated_sightings,
-            places: track.places,
-        })
-        .collect()
+    fold.verdicts_with([], rule)
 }

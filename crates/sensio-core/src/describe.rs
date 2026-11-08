@@ -14,6 +14,7 @@ use serde::Serialize;
 
 use crate::event::{DeviceId, Event, EventKind, ServiceData, TimeNs, WifiSecurity};
 use crate::geo::distance_m;
+use crate::judge::order_key;
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
@@ -513,6 +514,34 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     })
 }
 
+/// What a sighting says before it's folded: the emitter's kind, its
+/// strength, and its address; `None` for a fix or an event without a device.
+fn sighting(kind: &EventKind) -> Option<(EmitterKind, Option<f32>, Option<&String>)> {
+    match kind {
+        EventKind::WifiAp {
+            bssid, rssi_dbm, ..
+        } => Some((
+            EmitterKind::AccessPoint,
+            rssi_dbm.map(f32::from),
+            Some(bssid),
+        )),
+        EventKind::WifiClient { addr, rssi_dbm, .. } => {
+            Some((EmitterKind::Station, rssi_dbm.map(f32::from), Some(addr)))
+        }
+        EventKind::BleAdvert { addr, rssi_dbm, .. } => {
+            Some((EmitterKind::Ble, rssi_dbm.map(f32::from), Some(addr)))
+        }
+        EventKind::BtClassic { addr, rssi_dbm, .. } => {
+            Some((EmitterKind::BtClassic, rssi_dbm.map(f32::from), Some(addr)))
+        }
+        EventKind::Tpms { rssi_dbm, .. } => Some((EmitterKind::Tpms, *rssi_dbm, None)),
+        EventKind::GnssFix { .. } => None,
+    }
+}
+
+/// One emitter's state over its sightings in the judge's order; what depends
+/// on the answer's time (the recent window) is counted apart ([`Recent`]).
+#[derive(Debug, Clone)]
 struct Track {
     kind: EmitterKind,
     ssid: Option<String>,
@@ -521,8 +550,6 @@ struct Track {
     last_seen_ns: TimeNs,
     sightings: u64,
     latest_dbm: Option<f32>,
-    strongest_dbm: Option<f32>,
-    recent: BTreeMap<Option<String>, u64>,
     addr: Option<String>,
     company_ids: Vec<u16>,
     tracker: Option<(Tracker, &'static str)>,
@@ -531,8 +558,25 @@ struct Track {
 }
 
 impl Track {
-    /// Adds one sighting; `recent` says whether it falls in the recent window.
-    fn observe(&mut self, event: &Event, kind: EmitterKind, dbm: Option<f32>, recent: bool) {
+    fn new(kind: EmitterKind, t: TimeNs, addr: Option<&String>) -> Self {
+        Self {
+            kind,
+            ssid: None,
+            receivers: Vec::new(),
+            first_seen_ns: t,
+            last_seen_ns: t,
+            sightings: 0,
+            latest_dbm: None,
+            addr: addr.map(|a| a.to_ascii_lowercase()),
+            company_ids: Vec::new(),
+            tracker: None,
+            security: None,
+            device_class: None,
+        }
+    }
+
+    /// Adds the next sighting in the judge's order.
+    fn observe(&mut self, event: &Event, kind: EmitterKind, dbm: Option<f32>) {
         // One address is one radio in either Wi-Fi role; an access point is
         // the role worth naming.
         if kind == EmitterKind::AccessPoint {
@@ -547,12 +591,6 @@ impl Track {
         }
         if dbm.is_some() {
             self.latest_dbm = dbm;
-        }
-        if recent {
-            *self.recent.entry(event.receiver.clone()).or_default() += 1;
-            if let Some(d) = dbm {
-                self.strongest_dbm = Some(self.strongest_dbm.map_or(d, |s| s.max(d)));
-            }
         }
         match &event.kind {
             EventKind::WifiAp { ssid, security, .. } => {
@@ -584,6 +622,186 @@ impl Track {
     }
 }
 
+/// One emitter's sightings within the recent window.
+#[derive(Debug, Default)]
+struct Recent {
+    by_receiver: BTreeMap<Option<String>, u64>,
+    strongest_dbm: Option<f32>,
+}
+
+/// Whether the vehicle moved between consecutive fixes, folded in the
+/// judge's order.
+#[derive(Debug, Clone, Copy, Default)]
+struct MovementFold {
+    prev: Option<(TimeNs, f64, f64)>,
+    moving: Option<bool>,
+    stopped_since: Option<TimeNs>,
+}
+
+impl MovementFold {
+    /// Adds the next fix; a pair of fixes ending after `now_ns` doesn't count,
+    /// and without a `now_ns` none does.
+    fn observe(
+        &mut self,
+        fix: (TimeNs, f64, f64),
+        now_ns: Option<TimeNs>,
+        params: &DescribeParams,
+    ) {
+        let (t1, lat1, lon1) = fix;
+        if let Some((t0, lat0, lon0)) = self.prev {
+            if t1 > t0 && now_ns.is_none_or(|now| t1 <= now) {
+                #[allow(clippy::cast_precision_loss)]
+                let seconds = (t1 - t0) as f64 / 1e9;
+                let fast = distance_m(lat0, lon0, lat1, lon1) / seconds >= params.moving_mps;
+                if fast {
+                    self.stopped_since = None;
+                } else if self.stopped_since.is_none() {
+                    self.stopped_since = Some(t0);
+                }
+                self.moving = Some(fast);
+            }
+        }
+        self.prev = Some(fix);
+    }
+
+    fn movement(&self, now_ns: TimeNs, params: &DescribeParams) -> Movement {
+        match (self.moving, self.stopped_since) {
+            (None, _) => Movement::Unknown,
+            (Some(true), _) => Movement::Moving,
+            (Some(false), Some(since))
+                if now_ns.saturating_sub(since) >= params.parked_after_ns =>
+            {
+                Movement::Parked
+            }
+            (Some(false), _) => Movement::Stopped,
+        }
+    }
+}
+
+/// The describe layer's state over events read in the judge's order; the
+/// live judge folds a session into it as the session goes.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct DescribeFold {
+    tracks: BTreeMap<DeviceId, Track>,
+    movement: MovementFold,
+}
+
+impl DescribeFold {
+    /// Reads the next event in the judge's order. Every later answer's time
+    /// must be at or after a fix read here: a pair of fixes counts toward
+    /// movement whatever the answer's time.
+    pub(crate) fn observe(&mut self, event: &Event, params: &DescribeParams) {
+        observe(&mut self.tracks, &mut self.movement, event, None, params);
+    }
+
+    /// The emitter picture at `now_ns` over what was read and then `tail`,
+    /// which follows it in the judge's order; `recent` holds at least every
+    /// event of either within the recent window, in any order, and may hold
+    /// older ones. The fold itself is unchanged; only the emitters `tail`
+    /// touches are copied.
+    pub(crate) fn picture_with<'a>(
+        &self,
+        tail: impl IntoIterator<Item = &'a Event>,
+        recent: impl IntoIterator<Item = &'a Event>,
+        now_ns: TimeNs,
+        params: &DescribeParams,
+        vendors: &VendorTable,
+    ) -> Picture {
+        let mut movement = self.movement;
+        let mut touched: BTreeMap<DeviceId, Track> = BTreeMap::new();
+        for event in tail {
+            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+                movement.observe((event.t_ns, lat_deg, lon_deg), Some(now_ns), params);
+                continue;
+            }
+            let Some((kind, dbm, addr)) = sighting(&event.kind) else {
+                continue;
+            };
+            let Some(device) = event.kind.device() else {
+                continue;
+            };
+            let track = match touched.entry(device) {
+                std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    let base = self.tracks.get(entry.key()).cloned();
+                    entry.insert(base.unwrap_or_else(|| Track::new(kind, event.t_ns, addr)))
+                }
+            };
+            track.observe(event, kind, dbm);
+        }
+
+        let recent_from = now_ns.saturating_sub(params.recent_ns);
+        let mut windows: BTreeMap<DeviceId, Recent> = BTreeMap::new();
+        for event in recent {
+            if event.t_ns < recent_from {
+                continue;
+            }
+            let (Some((_, dbm, _)), Some(device)) = (sighting(&event.kind), event.kind.device())
+            else {
+                continue;
+            };
+            let window = windows.entry(device).or_default();
+            *window
+                .by_receiver
+                .entry(event.receiver.clone())
+                .or_default() += 1;
+            if let Some(d) = dbm {
+                window.strongest_dbm = Some(window.strongest_dbm.map_or(d, |s| s.max(d)));
+            }
+        }
+
+        let mut stale = 0;
+        let mut emitters: Vec<Description> = self
+            .tracks
+            .iter()
+            .filter(|(device, _)| !touched.contains_key(*device))
+            .chain(touched.iter())
+            .filter_map(|(device, track)| {
+                if track.last_seen_ns < recent_from {
+                    stale += 1;
+                    return None;
+                }
+                Some(description(
+                    device,
+                    track,
+                    windows.remove(device),
+                    params,
+                    vendors,
+                ))
+            })
+            .collect();
+        emitters.sort_by(loud_first);
+        Picture {
+            movement: movement.movement(now_ns, params),
+            texture: texture(&emitters, recent_from, params.newest),
+            emitters,
+            older: stale,
+        }
+    }
+}
+
+/// Reads one event into `tracks` and `movement`.
+fn observe(
+    tracks: &mut BTreeMap<DeviceId, Track>,
+    movement: &mut MovementFold,
+    event: &Event,
+    now_ns: Option<TimeNs>,
+    params: &DescribeParams,
+) {
+    if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+        movement.observe((event.t_ns, lat_deg, lon_deg), now_ns, params);
+        return;
+    }
+    let (Some((kind, dbm, addr)), Some(device)) = (sighting(&event.kind), event.kind.device())
+    else {
+        return;
+    };
+    tracks
+        .entry(device)
+        .or_insert_with(|| Track::new(kind, event.t_ns, addr))
+        .observe(event, kind, dbm);
+}
+
 /// The emitter picture at `now_ns`, over `events`.
 #[must_use]
 pub fn describe(
@@ -593,89 +811,29 @@ pub fn describe(
     vendors: &VendorTable,
 ) -> Picture {
     let mut order: Vec<usize> = (0..events.len()).collect();
-    order.sort_by_key(|&i| {
-        let fix_first = u8::from(!matches!(events[i].kind, EventKind::GnssFix { .. }));
-        (events[i].t_ns, fix_first, i)
-    });
-    let recent_from = now_ns.saturating_sub(params.recent_ns);
-    let mut tracks: BTreeMap<DeviceId, Track> = BTreeMap::new();
-    let mut fixes = Vec::new();
-
-    for event in order.into_iter().map(|i| &events[i]) {
-        if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
-            fixes.push((event.t_ns, lat_deg, lon_deg));
-            continue;
-        }
-        let Some(device) = event.kind.device() else {
-            continue;
-        };
-        let (kind, dbm, addr) = match &event.kind {
-            EventKind::WifiAp {
-                bssid, rssi_dbm, ..
-            } => (
-                EmitterKind::AccessPoint,
-                rssi_dbm.map(f32::from),
-                Some(bssid),
-            ),
-            EventKind::WifiClient { addr, rssi_dbm, .. } => {
-                (EmitterKind::Station, rssi_dbm.map(f32::from), Some(addr))
-            }
-            EventKind::BleAdvert { addr, rssi_dbm, .. } => {
-                (EmitterKind::Ble, rssi_dbm.map(f32::from), Some(addr))
-            }
-            EventKind::BtClassic { addr, rssi_dbm, .. } => {
-                (EmitterKind::BtClassic, rssi_dbm.map(f32::from), Some(addr))
-            }
-            EventKind::Tpms { rssi_dbm, .. } => (EmitterKind::Tpms, *rssi_dbm, None),
-            EventKind::GnssFix { .. } => continue,
-        };
-        let t = event.t_ns;
-        let track = tracks.entry(device).or_insert_with(|| Track {
-            kind,
-            ssid: None,
-            receivers: Vec::new(),
-            first_seen_ns: t,
-            last_seen_ns: t,
-            sightings: 0,
-            latest_dbm: None,
-            strongest_dbm: None,
-            recent: BTreeMap::new(),
-            addr: addr.map(|a| a.to_ascii_lowercase()),
-            company_ids: Vec::new(),
-            tracker: None,
-            security: None,
-            device_class: None,
-        });
-        track.observe(event, kind, dbm, t >= recent_from);
+    order.sort_by_key(|&i| order_key(&events[i], i));
+    let mut fold = DescribeFold::default();
+    for i in order {
+        observe(
+            &mut fold.tracks,
+            &mut fold.movement,
+            &events[i],
+            Some(now_ns),
+            params,
+        );
     }
-
-    let mut stale = 0;
-    let mut emitters: Vec<Description> = tracks
-        .into_iter()
-        .filter_map(|(device, track)| {
-            if track.last_seen_ns < recent_from {
-                stale += 1;
-                return None;
-            }
-            Some(description(device, track, params, vendors))
-        })
-        .collect();
-    emitters.sort_by(loud_first);
-    Picture {
-        movement: movement(&fixes, now_ns, params),
-        texture: texture(&emitters, recent_from, params.newest),
-        emitters,
-        older: stale,
-    }
+    fold.picture_with([], events, now_ns, params, vendors)
 }
 
 fn description(
-    device: DeviceId,
-    track: Track,
+    device: &DeviceId,
+    track: &Track,
+    recent: Option<Recent>,
     params: &DescribeParams,
     vendors: &VendorTable,
 ) -> Description {
-    let band = match (track.kind, track.strongest_dbm) {
+    let recent = recent.unwrap_or_default();
+    let band = match (track.kind, recent.strongest_dbm) {
         (EmitterKind::Tpms, _) | (_, None) => Band::Unknown,
         (_, Some(d)) if d >= f32::from(params.strong_dbm) => Band::Strong,
         (_, Some(d)) if d >= f32::from(params.weak_dbm) => Band::Medium,
@@ -696,18 +854,18 @@ fn description(
         _ => None,
     };
     Description {
-        device,
+        device: device.clone(),
         kind: track.kind,
-        ssid: track.ssid,
-        receivers: track.receivers,
+        ssid: track.ssid.clone(),
+        receivers: track.receivers.clone(),
         first_seen_ns: track.first_seen_ns,
         last_seen_ns: track.last_seen_ns,
         sightings: track.sightings,
         latest_dbm: track.latest_dbm,
-        strongest_dbm: track.strongest_dbm,
+        strongest_dbm: recent.strongest_dbm,
         band,
-        recent: track
-            .recent
+        recent: recent
+            .by_receiver
             .into_iter()
             .map(|(receiver, sightings)| ReceiverSightings {
                 receiver,
@@ -716,7 +874,7 @@ fn description(
             .collect(),
         address,
         vendor,
-        company_ids: track.company_ids,
+        company_ids: track.company_ids.clone(),
         tracker: track.tracker.map(|(t, _)| t),
         security: track.security,
         category: match track.tracker {
@@ -738,33 +896,4 @@ fn loud_first(a: &Description, b: &Description) -> Ordering {
             strength(b).total_cmp(&strength(a))
         })
         .then_with(|| a.device.cmp(&b.device))
-}
-
-/// Moving, stopped or parked at `now_ns`, from the speed between fixes.
-fn movement(fixes: &[(TimeNs, f64, f64)], now_ns: TimeNs, params: &DescribeParams) -> Movement {
-    let mut moving = None;
-    let mut stopped_since = None;
-    for pair in fixes.windows(2) {
-        let ((t0, lat0, lon0), (t1, lat1, lon1)) = (pair[0], pair[1]);
-        if t1 <= t0 || t1 > now_ns {
-            continue;
-        }
-        #[allow(clippy::cast_precision_loss)]
-        let seconds = (t1 - t0) as f64 / 1e9;
-        let fast = distance_m(lat0, lon0, lat1, lon1) / seconds >= params.moving_mps;
-        if fast {
-            stopped_since = None;
-        } else if stopped_since.is_none() {
-            stopped_since = Some(t0);
-        }
-        moving = Some(fast);
-    }
-    match (moving, stopped_since) {
-        (None, _) => Movement::Unknown,
-        (Some(true), _) => Movement::Moving,
-        (Some(false), Some(since)) if now_ns.saturating_sub(since) >= params.parked_after_ns => {
-            Movement::Parked
-        }
-        (Some(false), _) => Movement::Stopped,
-    }
 }

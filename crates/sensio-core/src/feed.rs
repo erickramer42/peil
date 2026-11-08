@@ -188,12 +188,24 @@ pub struct SourceCoverage {
     pub withheld: u64,
     /// Lines the app couldn't pass to the core, as it reported.
     pub dropped: u64,
+    /// Lines whose events arrived more than [`LATENESS_NS`] behind the
+    /// latest event and took the window's edge as their time (ADR-0005
+    /// section 3).
+    ///
+    /// [`LATENESS_NS`]: crate::live::LATENESS_NS
+    #[serde(skip_serializing_if = "is_zero")]
+    pub late: u64,
     /// The latest line's arrival, on the boot clock.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_boot_ns: Option<TimeNs>,
     /// The events by kind (`ble_advert`, `wifi_ap`, ...), ordered by kind.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub kinds: BTreeMap<&'static str, KindCoverage>,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// What a session covered so far.

@@ -5,16 +5,22 @@
 //! I/O, no randomness. The same feed always gives the same verdict stream,
 //! which is what makes a replay equal to what was shown live.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, BufRead};
 
-use crate::describe::{DESCRIBE_VERSION, DescribeParams, VendorTable, describe};
+use crate::describe::{DESCRIBE_VERSION, DescribeFold, DescribeParams, VendorTable};
 use crate::event::{Event, EventKind, TimeNs, is_label, reason_without_values};
 use crate::feed::{
     BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, RadioCoverage,
     RadioState, SourceCoverage, VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
 };
-use crate::judge::{PersistenceRule, RULE_SET_VERSION, judge};
+use crate::judge::{JudgeFold, PersistenceRule, RULE_SET_VERSION, order_key};
+
+/// How far behind the latest event an event may arrive and keep its own
+/// time; an earlier one takes the latest time minus this (ADR-0005 section
+/// 3). Events older than this are folded into the judge's and the describe
+/// layer's state and no longer held one by one.
+pub const LATENESS_NS: TimeNs = 600 * 1_000_000_000;
 
 /// Turns one source's raw text into what it observed.
 pub trait Normalize {
@@ -108,7 +114,15 @@ pub struct Live<N> {
     last_seq: Option<u64>,
     clock: Option<(TimeNs, TimeNs)>,
     offsets: BTreeMap<String, TimeNs>,
-    events: Vec<Event>,
+    /// The latest event time so far.
+    frontier: Option<TimeNs>,
+    /// Events within [`LATENESS_NS`] of the frontier, in the judge's order.
+    pending: BTreeMap<(TimeNs, u8, usize), Event>,
+    /// Folded events the recent window may still reach, oldest first.
+    window: VecDeque<Event>,
+    judge_fold: JudgeFold,
+    describe_fold: DescribeFold,
+    events: usize,
     sources: BTreeMap<(String, Option<String>), SourceCoverage>,
     radios: BTreeMap<(String, Option<String>), RadioCoverage>,
     latest_boot_ns: Option<TimeNs>,
@@ -134,7 +148,12 @@ impl<N: Normalize> Live<N> {
             last_seq: None,
             clock: None,
             offsets: BTreeMap::new(),
-            events: Vec::new(),
+            frontier: None,
+            pending: BTreeMap::new(),
+            window: VecDeque::new(),
+            judge_fold: JudgeFold::default(),
+            describe_fold: DescribeFold::default(),
+            events: 0,
             sources: BTreeMap::new(),
             radios: BTreeMap::new(),
             latest_boot_ns: None,
@@ -247,7 +266,7 @@ impl<N: Normalize> Live<N> {
                 reason: EndReason::InputClosed,
                 feed_lines: self.feed_lines,
                 judged: self.judged,
-                events: self.events.len(),
+                events: self.events,
             },
         ])
     }
@@ -296,30 +315,7 @@ impl<N: Normalize> Live<N> {
                 if boot_ns < 0 {
                     return reject(self, "judge time out of range");
                 }
-                self.saw(boot_ns);
-                self.judged += 1;
-                // The answer's time: its arrival through the clock, or, before
-                // any clock line, the latest event's.
-                let at_ns = self
-                    .utc(boot_ns, None, None)
-                    .or_else(|| self.events.iter().map(|e| e.t_ns).max())
-                    .unwrap_or(0);
-                vec![
-                    VerdictLine::Coverage(self.coverage(Some(boot_ns))),
-                    VerdictLine::Emitters {
-                        judge_line: feed_line,
-                        describe_version: DESCRIBE_VERSION,
-                        vendors: self.vendors.id().map(str::to_owned),
-                        recent_ns: self.describe.recent_ns,
-                        at_ns,
-                        picture: describe(&self.events, at_ns, &self.describe, &self.vendors),
-                    },
-                    VerdictLine::Verdicts {
-                        judge_line: feed_line,
-                        boot_ns,
-                        verdicts: judge(&self.events, &self.rule),
-                    },
-                ]
+                self.answer(feed_line, boot_ns)
             }
             FeedLine::Dropped {
                 source,
@@ -352,6 +348,54 @@ impl<N: Normalize> Live<N> {
                 Err(reason) => reject(self, reason),
             },
         }
+    }
+
+    /// Answers a `judge` line at `boot_ns`: the coverage so far, the
+    /// emitter picture and the verdicts.
+    fn answer(&mut self, feed_line: usize, boot_ns: TimeNs) -> Vec<VerdictLine> {
+        self.saw(boot_ns);
+        self.judged += 1;
+        // The answer's time: its arrival through the clock, held to
+        // the lateness window's edge, or, without a clock, the latest
+        // event's.
+        let at_ns = self
+            .utc(boot_ns, None, None)
+            .map(|t| self.edge().map_or(t, |edge| t.max(edge)))
+            .or(self.frontier)
+            .unwrap_or(0);
+        // Only events in the recent window count toward it; both
+        // collections are in time order, so the rest is skipped.
+        let recent_from = at_ns.saturating_sub(self.describe.recent_ns);
+        let first = self.window.partition_point(|e| e.t_ns < recent_from);
+        let recent = self.window.range(first..).chain(
+            self.pending
+                .range((recent_from, 0, 0)..)
+                .map(|(_, event)| event),
+        );
+        vec![
+            VerdictLine::Coverage(self.coverage(Some(boot_ns))),
+            VerdictLine::Emitters {
+                judge_line: feed_line,
+                describe_version: DESCRIBE_VERSION,
+                vendors: self.vendors.id().map(str::to_owned),
+                recent_ns: self.describe.recent_ns,
+                at_ns,
+                picture: self.describe_fold.picture_with(
+                    self.pending.values(),
+                    recent,
+                    at_ns,
+                    &self.describe,
+                    &self.vendors,
+                ),
+            },
+            VerdictLine::Verdicts {
+                judge_line: feed_line,
+                boot_ns,
+                verdicts: self
+                    .judge_fold
+                    .verdicts_with(self.pending.values(), &self.rule),
+            },
+        ]
     }
 
     /// A radio's state change: the time in the state it leaves goes to that
@@ -440,10 +484,11 @@ impl<N: Normalize> Live<N> {
             self.entry(key.0, key.1).rejected += 1;
             return rejected("line time out of range");
         }
-        let Some(t_ns) = self.utc(boot_ns, remote_ns, key.1.as_deref()) else {
+        let Some(mapped_ns) = self.utc(boot_ns, remote_ns, key.1.as_deref()) else {
             self.entry(key.0, key.1).rejected += 1;
             return rejected("no clock line before it, or its time maps out of range");
         };
+        let t_ns = self.edge().map_or(mapped_ns, |edge| mapped_ns.max(edge));
         let kinds = match self.normalizer.normalize(&key.0, raw) {
             Ok(kinds) => kinds,
             Err(reason) => {
@@ -467,14 +512,51 @@ impl<N: Normalize> Live<N> {
         self.saw(boot_ns);
         let entry = self.entry(key.0, key.1);
         entry.events += events.len() as u64;
+        if t_ns > mapped_ns {
+            entry.late += 1;
+        }
         entry.last_boot_ns = Some(entry.last_boot_ns.map_or(boot_ns, |t| t.max(boot_ns)));
         for event in &events {
             let kind = entry.kinds.entry(event.kind.name()).or_default();
             kind.events += 1;
             kind.last_boot_ns = kind.last_boot_ns.max(boot_ns);
         }
-        self.events.extend(events);
+        self.frontier = Some(self.frontier.map_or(t_ns, |f| f.max(t_ns)));
+        for event in events {
+            self.pending.insert(order_key(&event, self.events), event);
+            self.events += 1;
+        }
+        self.settle();
         Vec::new()
+    }
+
+    /// The lateness window's edge: the latest event time minus
+    /// [`LATENESS_NS`].
+    fn edge(&self) -> Option<TimeNs> {
+        self.frontier.map(|f| f.saturating_sub(LATENESS_NS))
+    }
+
+    /// Folds the events now older than the window's edge, in the judge's
+    /// order, and lets go of those the recent window can no longer reach.
+    /// Every later event and answer is at or after the edge, so nothing
+    /// folded is ever preceded by what comes next.
+    fn settle(&mut self) {
+        let Some(edge) = self.edge() else {
+            return;
+        };
+        while let Some(entry) = self.pending.first_entry() {
+            if entry.key().0 >= edge {
+                break;
+            }
+            let event = entry.remove();
+            self.judge_fold.observe(&event, &self.rule);
+            self.describe_fold.observe(&event, &self.describe);
+            self.window.push_back(event);
+        }
+        let reach = edge.saturating_sub(self.describe.recent_ns);
+        while self.window.front().is_some_and(|e| e.t_ns < reach) {
+            self.window.pop_front();
+        }
     }
 
     /// A line's arrival as UTC: a remote receiver's own stamp through its
@@ -551,5 +633,60 @@ fn close_interval(track: &mut RadioCoverage, now: TimeNs) {
         RadioState::Off | RadioState::Failed => {
             track.lost_ns = track.lost_ns.saturating_add(spent);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One normalized event per line, as the `sensio` source has it.
+    struct Sensio;
+
+    impl Normalize for Sensio {
+        fn normalize(&self, _source: &str, raw: &str) -> Result<Vec<EventKind>, String> {
+            serde_json::from_str(raw)
+                .map(|kind| vec![kind])
+                .map_err(|_| "not an event".to_owned())
+        }
+    }
+
+    #[test]
+    fn a_long_session_holds_only_the_windows_events() {
+        let second: TimeNs = 1_000_000_000;
+        let mut live = Live::new(Sensio, PersistenceRule::default(), false);
+        let push = |live: &mut Live<Sensio>, n: usize, line: String| {
+            live.push(n, line.as_bytes(), true).expect("a feed line");
+        };
+        push(
+            &mut live,
+            1,
+            r#"{"type":"start","schema":"sensio.feed/1","app":"test","boot_ns":0}"#.to_owned(),
+        );
+        push(
+            &mut live,
+            2,
+            r#"{"type":"clock","boot_ns":0,"utc_ns":1800000000000000000,"basis":"gnss"}"#
+                .to_owned(),
+        );
+        // Four hours, one advert a second from a few devices.
+        let hours: u32 = 4;
+        for s in 1..=hours * 3600 {
+            let raw = format!(
+                r#"{{\"kind\":\"ble_advert\",\"addr\":\"aa:aa:aa:00:00:0{}\",\"rssi_dbm\":-60}}"#,
+                s % 4
+            );
+            let text = format!(
+                r#"{{"type":"line","seq":{s},"boot_ns":{},"source":"sensio","raw":"{raw}"}}"#,
+                i64::from(s) * second
+            );
+            push(&mut live, 2 + usize::try_from(s).expect("small"), text);
+        }
+        // The window and the recent window's reach, a second apart each.
+        let held = live.pending.len() + live.window.len();
+        let reach =
+            usize::try_from((LATENESS_NS + live.describe.recent_ns) / second + 1).expect("small");
+        assert!(held <= reach, "{held} events held, more than {reach}");
+        assert_eq!(live.events, usize::try_from(hours * 3600).expect("small"));
     }
 }

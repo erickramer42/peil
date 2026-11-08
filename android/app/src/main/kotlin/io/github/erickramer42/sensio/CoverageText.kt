@@ -19,6 +19,8 @@ class Coverage(
     /** Receiver to event kind to its latest arrival, on the boot clock. */
     val lastArrival: Map<String, Map<String, Long>> = emptyMap(),
     val radios: List<RadioCoverage> = emptyList(),
+    /** Lines more than the core's lateness window behind, timed at its edge (ADR-0005 section 3). */
+    val late: Long = 0,
 )
 
 /**

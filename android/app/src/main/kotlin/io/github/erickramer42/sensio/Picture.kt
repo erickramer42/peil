@@ -118,6 +118,7 @@ object VerdictStream {
         var rejected = 0L
         var withheld = 0L
         var dropped = 0L
+        var late = 0L
         val lastArrival = HashMap<String, HashMap<String, Long>>()
         for (i in 0 until (sources?.length() ?: 0)) {
             val s = sources!!.getJSONObject(i)
@@ -126,6 +127,7 @@ object VerdictStream {
             rejected += s.optLong("rejected")
             withheld += s.optLong("withheld")
             dropped += s.optLong("dropped")
+            late += s.optLong("late")
             val receiver = s.text("receiver") ?: s.optString("source")
             val kinds = s.optJSONObject("kinds") ?: continue
             val byKind = lastArrival.getOrPut(receiver) { HashMap() }
@@ -150,6 +152,7 @@ object VerdictStream {
             bootNs = if (o.has("boot_ns")) o.optLong("boot_ns") else null,
             lastArrival = lastArrival,
             radios = radios,
+            late = late,
         )
     }
 }
