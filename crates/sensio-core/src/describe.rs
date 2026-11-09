@@ -133,6 +133,9 @@ pub enum Tracker {
     Dult,
     /// Tile's network.
     Tile,
+    /// Samsung's `SmartThings` Find network.
+    #[serde(rename = "smartthings_find")]
+    SmartThingsFind,
 }
 
 /// A hardware category, with the table entry that matched (ADR-0006 section 4).
@@ -322,6 +325,12 @@ fn texture(emitters: &[Description], recent_from: TimeNs, newest: usize) -> Text
 ///   to Tile, Inc.; the Bluetooth SIG's assigned numbers, `member_uuids.yaml`,
 ///   bitbucket.org/bluetooth-SIG/public/raw/main/assigned_numbers/uuids/member_uuids.yaml
 ///   (read 2026-11-08).
+/// - `samsung-smarttag`: service data under UUID 0xFD5A whose first byte,
+///   masked with 0xF8, is 0x10, a `SmartTag` on Samsung's `SmartThings` Find
+///   network (the advert alone doesn't tell the `SmartTag` models apart);
+///   `AirGuard`'s scan filter in `SamsungTracker.kt`, github.com/seemoo-lab/AirGuard,
+///   `app/src/main/java/de/seemoo/at_tracking_detection/database/models/device/types/`
+///   (read 2026-11-08).
 fn tracker(
     manufacturer: &[crate::event::ManufacturerData],
     service: &[ServiceData],
@@ -354,6 +363,15 @@ fn tracker(
             }
             Some("fcb2") => return found(Tracker::Dult, "tracker", "dult"),
             Some("feed" | "feec" | "fd84") => return found(Tracker::Tile, "tracker", "tile"),
+            Some("fd5a")
+                if entry
+                    .data
+                    .get(..2)
+                    .and_then(|b| u8::from_str_radix(b, 16).ok())
+                    .is_some_and(|b| b & 0xf8 == 0x10) =>
+            {
+                return found(Tracker::SmartThingsFind, "tracker", "samsung-smarttag");
+            }
             _ => {}
         }
     }

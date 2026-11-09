@@ -51,6 +51,7 @@ object Labels {
         "google_find_hub" to "Find Hub",
         "dult" to "DULT tracker",
         "tile" to "Tile",
+        "smartthings_find" to "SmartThings",
     )
 
     /** The devices a tracker format's category entry names. */
@@ -59,6 +60,7 @@ object Labels {
         "apple-find-my-accessory" to "accessory",
         "apple-find-my-airpods" to "AirPods",
         "apple-find-my-apple-device" to "Apple device",
+        "samsung-smarttag" to "SmartTag",
     )
 
     /** An emitter's tracker network, with the device its advert names: "Find My AirTag". */

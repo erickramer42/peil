@@ -11,7 +11,7 @@ class LabelsTest {
     @Test
     fun aFindMyAdvertsDeviceFollowsItsNetwork() {
         assertEquals(
-            listOf("Find My AirTag", "Find My accessory", "Find My AirPods", "Find My Apple device", "Find My", "Tile", null),
+            listOf("Find My AirTag", "Find My accessory", "Find My AirPods", "Find My Apple device", "Find My", "Tile", "SmartThings SmartTag", null),
             listOf(
                 ble("apple_find_my", "apple-find-my-airtag"),
                 ble("apple_find_my", "apple-find-my-accessory"),
@@ -19,6 +19,7 @@ class LabelsTest {
                 ble("apple_find_my", "apple-find-my-apple-device"),
                 ble("apple_find_my", "apple-find-my"),
                 ble("tile", "tile"),
+                ble("smartthings_find", "samsung-smarttag"),
                 ble(null, null),
             ).map { Labels.tracker(it) },
         )

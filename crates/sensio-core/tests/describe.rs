@@ -233,6 +233,41 @@ fn a_find_my_adverts_status_byte_names_the_device() {
 }
 
 #[test]
+fn a_smarttag_is_fd5a_service_data_whose_first_byte_masks_to_0x10() {
+    // The low three bits are the tag's state and pass the mask; 0x18 and 0x08
+    // set the bits next to it, and empty service data isn't one.
+    let samsung = |n: u8, data: &str| {
+        ble(
+            T0,
+            &format!("aa:aa:aa:00:00:{n:02x}"),
+            -60 - i16::from(n),
+            &format!(r#","service_data":[{{"uuid":"FD5A","data":"{data}"}}]"#),
+        )
+    };
+    let events = events(&[
+        samsung(1, "10aabb"),
+        samsung(2, "13"),
+        samsung(3, "17aa"),
+        samsung(4, "18aabb"),
+        samsung(5, "08aabb"),
+        samsung(6, ""),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let trackers: Vec<Option<Tracker>> = picture.emitters.iter().map(|e| e.tracker).collect();
+    let tag = Some(Tracker::SmartThingsFind);
+    assert_eq!(trackers, [tag, tag, tag, None, None, None]);
+    assert_eq!(
+        picture.emitters[0].category.map(|c| (c.category, c.entry)),
+        Some(("tracker", "samsung-smarttag"))
+    );
+}
+
+#[test]
 fn service_data_under_other_uuids_names_no_tracker() {
     // 0xFEEE is next to Tile's 0xFEED; 0xFD00 and 0xFE2C belong to other
     // companies; a 128-bit UUID off the Bluetooth base isn't a short one; a
