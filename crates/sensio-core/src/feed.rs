@@ -163,6 +163,29 @@ pub struct RadioCoverage {
     /// Time spent `off` or `failed`, nanoseconds, up to the coverage line's
     /// time.
     pub lost_ns: TimeNs,
+    /// Its results over the last minute of arrivals, for a radio that gives
+    /// events (`ble`, `wifi`, `gnss`, `bt_classic`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_minute: Option<RadioRate>,
+    /// Whether it read `on` through that whole minute and gave fewer results
+    /// than a full scan does: under 100, and under 30 a device, or none (BLE
+    /// only). A scan the system quietly made opportunistic reads so, and so
+    /// does a place with nothing to hear.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub low_rate: bool,
+    /// Time spent low, nanoseconds, in whole seconds of arrival.
+    #[serde(skip_serializing_if = "is_zero_ns")]
+    pub low_ns: TimeNs,
+}
+
+/// A radio's results over the last minute of arrivals.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct RadioRate {
+    /// Its events in that minute: BLE adverts for `ble`, access points and
+    /// stations for `wifi`, fixes for `gnss`.
+    pub results: u64,
+    /// The distinct devices they named.
+    pub devices: u64,
 }
 
 /// One event kind's count from a source and receiver.
@@ -209,6 +232,11 @@ pub struct SourceCoverage {
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
 fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde passes a reference
+fn is_zero_ns(n: &TimeNs) -> bool {
     *n == 0
 }
 

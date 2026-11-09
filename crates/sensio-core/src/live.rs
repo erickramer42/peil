@@ -15,6 +15,7 @@ use crate::feed::{
     RadioState, SourceCoverage, VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
 };
 use crate::judge::{JudgeFold, PersistenceRule, RULE_SET_VERSION, order_key};
+use crate::rate::{self, Rate};
 
 /// How far behind the latest event an event may arrive and keep its own
 /// time; an earlier one takes the latest time minus this (ADR-0005 section
@@ -125,6 +126,8 @@ pub struct Live<N> {
     events: usize,
     sources: BTreeMap<(String, Option<String>), SourceCoverage>,
     radios: BTreeMap<(String, Option<String>), RadioCoverage>,
+    /// The counted radios' results by second of arrival.
+    rates: BTreeMap<(String, Option<String>), Rate>,
     latest_boot_ns: Option<TimeNs>,
     feed_rejected: u64,
     torn: u64,
@@ -156,6 +159,7 @@ impl<N: Normalize> Live<N> {
             events: 0,
             sources: BTreeMap::new(),
             radios: BTreeMap::new(),
+            rates: BTreeMap::new(),
             latest_boot_ns: None,
             feed_rejected: 0,
             torn: 0,
@@ -256,9 +260,12 @@ impl<N: Normalize> Live<N> {
     /// # Errors
     ///
     /// Returns [`Fatal::Empty`] if no `start` line was read.
-    pub fn finish(self) -> Result<Vec<VerdictLine>, Fatal> {
+    pub fn finish(mut self) -> Result<Vec<VerdictLine>, Fatal> {
         if !self.started {
             return Err(Fatal::Empty);
+        }
+        if let Some(now) = self.latest_boot_ns {
+            self.advance_rates(now);
         }
         Ok(vec![
             VerdictLine::Coverage(self.coverage(self.latest_boot_ns)),
@@ -354,6 +361,7 @@ impl<N: Normalize> Live<N> {
     /// emitter picture and the verdicts.
     fn answer(&mut self, feed_line: usize, boot_ns: TimeNs) -> Vec<VerdictLine> {
         self.saw(boot_ns);
+        self.advance_rates(boot_ns);
         self.judged += 1;
         // The answer's time: its arrival through the clock, held to
         // the lateness window's edge, or, without a clock, the latest
@@ -418,11 +426,17 @@ impl<N: Normalize> Live<N> {
             if boot_ns < track.since_boot_ns {
                 return Err("radio time goes back");
             }
+            if let Some(rate) = self.rates.get_mut(&key) {
+                rate.advance(boot_ns, track);
+            }
             close_interval(track, boot_ns);
             track.state = state;
             track.since_boot_ns = boot_ns;
         } else {
             let (radio, receiver) = key.clone();
+            if rate::counted(&radio) {
+                self.rates.insert(key.clone(), Rate::new(boot_ns));
+            }
             self.radios.insert(
                 key,
                 RadioCoverage {
@@ -432,6 +446,9 @@ impl<N: Normalize> Live<N> {
                     since_boot_ns: boot_ns,
                     filtered_ns: 0,
                     lost_ns: 0,
+                    last_minute: None,
+                    low_rate: false,
+                    low_ns: 0,
                 },
             );
         }
@@ -508,6 +525,16 @@ impl<N: Normalize> Live<N> {
         if let Some(reason) = events.iter().find_map(|e| e.validate().err()) {
             self.entry(key.0, key.1).rejected += 1;
             return rejected(reason);
+        }
+        for event in &events {
+            let Some(radio) = rate::radio_of(&event.kind) else {
+                continue;
+            };
+            let key = (radio.to_owned(), key.1.clone());
+            if let (Some(rate), Some(track)) = (self.rates.get_mut(&key), self.radios.get(&key)) {
+                rate.advance(boot_ns, track);
+                rate.record(boot_ns, event.kind.device());
+            }
         }
         self.saw(boot_ns);
         let entry = self.entry(key.0, key.1);
@@ -598,18 +625,33 @@ impl<N: Normalize> Live<N> {
             })
     }
 
+    /// Counts each radio's low seconds up to `boot_ns`.
+    fn advance_rates(&mut self, boot_ns: TimeNs) {
+        for (key, rate) in &mut self.rates {
+            if let Some(track) = self.radios.get(key) {
+                rate.advance(boot_ns, track);
+            }
+        }
+    }
+
     /// What the session covered, with each radio's open interval counted up
     /// to `boot_ns`.
     fn coverage(&self, boot_ns: Option<TimeNs>) -> Coverage {
         let radios = self
             .radios
-            .values()
-            .map(|track| {
-                let mut track = track.clone();
+            .iter()
+            .map(|(key, track)| {
+                let mut out = track.clone();
                 if let Some(now) = boot_ns {
-                    close_interval(&mut track, now);
+                    close_interval(&mut out, now);
+                    if let Some(rate) = self.rates.get(key) {
+                        let (last_minute, low_rate, low_ns) = rate.view(now, track);
+                        out.last_minute = Some(last_minute);
+                        out.low_rate = low_rate;
+                        out.low_ns = low_ns;
+                    }
                 }
-                track
+                out
             })
             .collect();
         Coverage {

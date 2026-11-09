@@ -17,6 +17,8 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 
 - Vendor names with no file to supply: the core carries a snapshot of the IEEE's MA-L, MA-M and MA-S lists (read 2026-11-09), so the app shows each emitter's vendor block and `peil live` and `peil describe` name it without `--vendors`, which takes a newer list instead. `packaging/vendors.py` refreshes the snapshot and records its date and each list's SHA-256 beside it.
 
+- Coverage shows a BLE scan that reads on but gives fewer results than a full scan: each radio's results and devices over the last minute (`last_minute`), and for BLE `low_rate` (under 100 results and under 30 a device, or none, through a minute it read on) with its time low (`low_ns`). Android can make a running scan opportunistic without telling the app; the app's coverage row reads "BLE low rate".
+
 ### Changed
 
 - `persistence.places` counts stops, not points along the road: a place is a stop of at least 2 minutes (`min_stop_ns`, `peil judge --min-stop-s`), and a device is flagged when it is heard during stops at two places 500 m apart, at least 10 minutes from its first sighting to its last. A device heard along a whole drive collected a place every 500 m. Each place gives the stop's start and latest fix (`stopped_from_ns`, `stopped_to_ns`). `RULE_SET_VERSION` is 2.

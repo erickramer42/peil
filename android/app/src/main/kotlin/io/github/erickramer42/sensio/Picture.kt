@@ -164,6 +164,9 @@ object VerdictStream {
                 state = r.optString("state"),
                 filteredS = r.optLong("filtered_ns") / 1_000_000_000L,
                 lostS = r.optLong("lost_ns") / 1_000_000_000L,
+                lowRate = r.optBoolean("low_rate"),
+                lowS = r.optLong("low_ns") / 1_000_000_000L,
+                lastMinute = r.optJSONObject("last_minute")?.optLong("results"),
             )
         }
         return Coverage(

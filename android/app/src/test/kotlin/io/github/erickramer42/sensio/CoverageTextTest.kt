@@ -32,6 +32,27 @@ class CoverageTextTest {
     }
 
     @Test
+    fun aBleScanGivingFewResultsReadsLowWithItsLastMinute() {
+        val low = coverage(
+            mapOf("phone" to mapOf("ble_advert" to 98 * s)),
+            listOf(RadioCoverage("ble", "phone", "on", 0, 0, lowRate = true, lowS = 150, lastMinute = 14)),
+        )
+        assertEquals(
+            "Phone: Wi-Fi nothing yet, BLE low rate 2 s (14 in the last minute, low 2 min), GNSS nothing yet, Classic nothing yet",
+            CoverageText.lines(low)[0],
+        )
+        // Back to a full scan, the time it was low stays.
+        val back = coverage(
+            mapOf("phone" to mapOf("ble_advert" to 100 * s)),
+            listOf(RadioCoverage("ble", "phone", "on", 0, 0, lowRate = false, lowS = 150, lastMinute = 2_400)),
+        )
+        assertEquals(
+            "Phone: Wi-Fi nothing yet, BLE 0 s (low 2 min), GNSS nothing yet, Classic nothing yet",
+            CoverageText.lines(back)[0],
+        )
+    }
+
+    @Test
     fun classicTurnedOffInTheSettingsReadsAsOffNotLost() {
         val unused = coverage(emptyMap(), listOf(RadioCoverage("bt_classic", "phone", "unused", filteredS = 0, lostS = 0)))
         assertEquals(

@@ -844,3 +844,69 @@ fn coverage_gives_each_kinds_latest_arrival() {
         .collect();
     assert_eq!(kinds, [("ble_advert", 2, 9), ("gnss_fix", 1, 7)]);
 }
+
+#[test]
+fn a_ble_scan_that_falls_to_a_few_results_reads_low_while_on() {
+    // Ten devices heard twice a second each for 5 minutes, as a full scan
+    // hears them; then one result every 4 s, as after the system made the
+    // scan opportunistic, with the radio still reading `on`.
+    let s = 1_000_000_000_i64;
+    let advert = |n: i64| {
+        format!(r#"{{"kind":"ble_advert","addr":"aa:aa:aa:00:00:{n:02x}","rssi_dbm":-60}}"#)
+    };
+    let mut body = vec![radio(0, "ble", "on")];
+    let mut seq = 0;
+    for at in 0..300 * 20 {
+        seq += 1;
+        body.push(line(seq, at * s / 20, Some("phone"), &advert(at % 10)));
+    }
+    body.push(judge_at(240 * s));
+    for at in (300..480).step_by(4) {
+        seq += 1;
+        body.push(line(seq, at * s, Some("phone"), &advert(at % 10)));
+    }
+    body.push(judge_at(480 * s));
+    // Judged in arrival order: the 4-minute answer comes after the lines
+    // that arrived by then.
+    body.sort_by_key(|l| {
+        serde_json::from_str::<serde_json::Value>(l).expect("JSON")["boot_ns"]
+            .as_i64()
+            .expect("a time")
+    });
+    let mut seq = 0;
+    let body: Vec<String> = body
+        .into_iter()
+        .map(|l| {
+            if l.contains(r#""type":"line""#) {
+                seq += 1;
+                let mut v: serde_json::Value = serde_json::from_str(&l).expect("JSON");
+                v["seq"] = seq.into();
+                v.to_string()
+            } else {
+                l
+            }
+        })
+        .collect();
+    let lines = live(&feed(&body), false);
+    assert!(rejections(&lines).is_empty(), "{lines:?}");
+    let seen: Vec<_> = coverages(&lines)
+        .iter()
+        .map(|c| {
+            let ble = &c.radios[0];
+            (
+                ble.last_minute.map(|r| (r.results, r.devices)),
+                ble.low_rate,
+                ble.low_ns,
+            )
+        })
+        .collect();
+    // Four minutes in: the 59 whole seconds before, 20 a second, and the
+    // line that arrived at the answer's instant.
+    assert_eq!(seen[0], (Some((1_181, 10)), false, 0));
+    // Eight minutes in: one result every 4 s from 424 s to 476 s, naming 5
+    // of the devices; low since the full scan's results left the window.
+    let (last_minute, low, low_ns) = seen[1];
+    assert_eq!(last_minute, Some((14, 5)));
+    assert!(low);
+    assert!((100 * s..=180 * s).contains(&low_ns), "{low_ns}");
+}

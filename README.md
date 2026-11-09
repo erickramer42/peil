@@ -23,7 +23,7 @@ It reads what established sensors already see (an Android phone's own scans and 
 - **Run live, replay later:** `peil live` reads the feed the app writes and answers with the picture, coverage and verdicts; a saved feed replays to the same bytes.
 - **The phone app:** Android 12 or later; it reads the phone's Wi-Fi, BLE and GNSS and keeps each session's raw lines on the phone.
   - Tap a dot for its details and the emitters closest to it in signal strength; mark your own devices to hide them.
-  - Coverage: each radio's state, its time lost or filtered, and what isn't watched.
+  - Coverage: each radio's state, its time lost or filtered, a BLE scan giving fewer results than a full one, and what isn't watched.
   - Settings, themes and retention are in the [guide](docs/guide.md).
 - **Add a laptop's Kismet:** `peil link` sends Kismet's devices to the app over USB tethering, Wi-Fi stations included, after pairing once with the app's code ([guide](docs/guide.md#the-laptop-link)).
 - **Install a release:** each release ships `peil` for Linux on x86_64 and aarch64 and the signed APK; [CHANGELOG.md](CHANGELOG.md) has the changes.

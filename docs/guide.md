@@ -14,7 +14,7 @@ The app needs Android 12 or later on an arm64 phone ([ADR-0004](adr/0004-android
 - A tap away from the dots clears the selection, or with none, makes the ring smaller or larger.
 - **Mine** lists the emitters heard, strongest first, for you to mark your own; the first time, the strong ones are checked for you, never a tracker. The app leaves yours off the ring and the list.
 
-**Coverage,** under the status: each radio (Wi-Fi, BLE, GNSS, Classic, and a linked laptop's) with its state, how long since it last gave anything, its time filtered (BLE with the screen off) or lost (off, or a scan refused), and what isn't watched (Wi-Fi stations without the laptop, sub-GHz, cellular). The app writes each radio's state changes into the session's feed, so a replay shows the same coverage. If the core stops, the app restarts it with the session's saved feed and counts the lines it missed.
+**Coverage,** under the status: each radio (Wi-Fi, BLE, GNSS, Classic, and a linked laptop's) with its state, how long since it last gave anything, its time filtered (BLE with the screen off) or lost (off, or a scan refused), BLE's low rate (on, but under 100 results in the last minute and under 30 a device, as a scan Android quietly downgraded gives), and what isn't watched (Wi-Fi stations without the laptop, sub-GHz, cellular). The app writes each radio's state changes into the session's feed, so a replay shows the same coverage. If the core stops, the app restarts it with the session's saved feed and counts the lines it missed.
 
 **Settings:**
 

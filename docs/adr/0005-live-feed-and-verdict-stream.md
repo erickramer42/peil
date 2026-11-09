@@ -1,6 +1,6 @@
 # ADR-0005: The live feed and the verdict stream
 
-Status: Accepted. Built: the feed and verdict-stream formats with the `radio` line and per-radio coverage, `peil live`, the `sensio`, `android` and `kismet` normalizers, and the incremental judge with its lateness window. Not yet built: an `end` for an interrupted stream.
+Status: Accepted. Built: the feed and verdict-stream formats with the `radio` line and per-radio coverage (with each radio's last-minute rate and BLE's low rate), `peil live`, the `sensio`, `android` and `kismet` normalizers, and the incremental judge with its lateness window. Not yet built: an `end` for an interrupted stream.
 
 ## Context
 
@@ -36,6 +36,8 @@ ADR-0004 runs the core as a process inside the Android app, fed raw lines over s
    - `verdicts`: the `judge` it answers (its position in the feed) and the full verdict set.
    - `rejected`: a line that couldn't be normalized, by its `seq`, with the reason and never its values; it is counted and skipped, and the stream goes on.
    - `coverage`: per source and receiver, the lines seen, rejected, withheld and dropped, and time asleep. Amended 2026-11-07: also the time it covers up to (the `judge` line's `boot_ns`, or at the end the feed's latest), each source's latest arrival overall and by event kind, and each radio's state, when it entered it, and its time `filtered` and lost (`off` or `failed`) so far.
+
+     Amended 2026-11-09: a radio that gives events (`ble`, `wifi`, `gnss`, `bt_classic`) also carries its results over the last minute of arrivals and the devices they named (`last_minute`), and BLE a `low_rate` flag with its time low (`low_ns`). Android can make a running BLE scan opportunistic after a timeout of its own (5 minutes on the test phone, 30 in AOSP) without telling the app, so the radio still reads `on` while its results fall to what other apps' scans bring. A full scan hears each device tens of times a minute, so `low_rate` is a minute the radio read `on` throughout with under 100 results and under 30 a device, or none: a scan short of full, or a place with nothing to hear. The core counts it from the lines' arrival in whole seconds, so a replay counts as live did.
    - `end`, the last line: why the stream ended (input closed, interrupted) and the totals.
 
    Amended 2026-11-07: an `emitters` line, the emitter picture at that moment (ADR-0006), comes before each `verdicts` line. Readers skip line types they don't know, so a new line type is an additive change.

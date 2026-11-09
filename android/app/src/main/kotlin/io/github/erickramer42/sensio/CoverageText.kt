@@ -1,7 +1,21 @@
 package io.github.erickramer42.sensio
 
-/** One radio's state from the core's `coverage` line (ADR-0005). */
-class RadioCoverage(val radio: String, val receiver: String, val state: String, val filteredS: Long, val lostS: Long)
+/**
+ * One radio's state from the core's `coverage` line (ADR-0005). [lowRate] is
+ * the core's reading of a BLE scan that reads on but gives fewer results than
+ * a full scan, as one the system quietly made opportunistic does;
+ * [lastMinute] is its results over the last minute.
+ */
+class RadioCoverage(
+    val radio: String,
+    val receiver: String,
+    val state: String,
+    val filteredS: Long,
+    val lostS: Long,
+    val lowRate: Boolean = false,
+    val lowS: Long = 0,
+    val lastMinute: Long? = null,
+)
 
 /**
  * The core's `coverage` line: totals over every source, the time it covers
@@ -85,7 +99,7 @@ object CoverageText {
             "off", "unused" -> " off"
             "failed" -> " failing"
             "filtered" -> " filtered"
-            else -> ""
+            else -> if (radio?.lowRate == true) " low rate" else ""
         }
         val last = w.kinds.mapNotNull { c.lastArrival[receiver]?.get(it) }.maxOrNull()
         val age = when {
@@ -100,10 +114,12 @@ object CoverageText {
         return "${w.label}$state$age$totals"
     }
 
-    /** Time a radio spent filtered or lost, when there was any. */
+    /** A low radio's last minute, and time a radio spent filtered, lost or low, when there was any. */
     private fun totals(r: RadioCoverage): String? = listOfNotNull(
+        if (r.lowRate && r.lastMinute != null) "${r.lastMinute} in the last minute" else null,
         if (r.filteredS > 0) "filtered ${duration(r.filteredS)}" else null,
         if (r.lostS > 0) "lost ${duration(r.lostS)}" else null,
+        if (r.lowS > 0) "low ${duration(r.lowS)}" else null,
     ).joinToString(", ").ifEmpty { null }
 
     fun duration(s: Long): String = if (s < 120) "$s s" else "${s / 60} min"
