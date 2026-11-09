@@ -5,28 +5,28 @@ expression: "live(FEED, true)[1..]"
 [
   {
     "type": "coverage",
-    "boot_ns": 607000000000,
+    "boot_ns": 626000000000,
     "sources": [
       {
         "source": "sensio",
-        "lines": 9,
-        "events": 9,
+        "lines": 14,
+        "events": 14,
         "rejected": 0,
         "withheld": 0,
         "dropped": 0,
-        "last_boot_ns": 606000000000,
+        "last_boot_ns": 625000000000,
         "kinds": {
           "ble_advert": {
-            "events": 5,
-            "last_boot_ns": 605000000000
+            "events": 6,
+            "last_boot_ns": 623000000000
           },
           "gnss_fix": {
-            "events": 2,
-            "last_boot_ns": 602000000000
+            "events": 6,
+            "last_boot_ns": 622000000000
           },
           "tpms": {
             "events": 2,
-            "last_boot_ns": 606000000000
+            "last_boot_ns": 625000000000
           }
         }
       }
@@ -37,18 +37,18 @@ expression: "live(FEED, true)[1..]"
   },
   {
     "type": "emitters",
-    "judge_line": 12,
+    "judge_line": 17,
     "describe_version": 3,
     "recent_ns": 60000000000,
-    "at_ns": 1800000605000000000,
-    "movement": "parked",
+    "at_ns": 1800000624000000000,
+    "movement": "stopped",
     "emitters": [
       {
         "device": "ble:aa:aa:aa:00:00:01",
         "kind": "ble",
         "receivers": [],
-        "first_seen_ns": 1800000001000000000,
-        "last_seen_ns": 1800000601000000000,
+        "first_seen_ns": 1800000011000000000,
+        "last_seen_ns": 1800000621000000000,
         "sightings": 2,
         "latest_dbm": -60.0,
         "strongest_dbm": -60.0,
@@ -61,28 +61,11 @@ expression: "live(FEED, true)[1..]"
         "address": "ble"
       },
       {
-        "device": "ble:cc:cc:cc:00:00:03",
-        "kind": "ble",
-        "receivers": [],
-        "first_seen_ns": 1800000003000000000,
-        "last_seen_ns": 1800000603000000000,
-        "sightings": 2,
-        "latest_dbm": -72.0,
-        "strongest_dbm": -72.0,
-        "band": "medium",
-        "recent": [
-          {
-            "sightings": 1
-          }
-        ],
-        "address": "ble"
-      },
-      {
         "device": "tpms:0a1b2c3d",
         "kind": "tpms",
         "receivers": [],
-        "first_seen_ns": 1800000004000000000,
-        "last_seen_ns": 1800000604000000000,
+        "first_seen_ns": 1800000014000000000,
+        "last_seen_ns": 1800000623000000000,
         "sightings": 2,
         "latest_dbm": -13.0,
         "strongest_dbm": -13.0,
@@ -95,112 +78,7 @@ expression: "live(FEED, true)[1..]"
         "address": "not_an_address"
       }
     ],
-    "older": 1,
-    "texture": {
-      "counts": {
-        "access_point": 0,
-        "station": 0,
-        "ble": 2,
-        "bt_classic": 0,
-        "tpms": 1
-      },
-      "randomized_wifi": 0,
-      "new": {
-        "access_point": 0,
-        "station": 0,
-        "ble": 0,
-        "bt_classic": 0,
-        "tpms": 0
-      },
-      "newest": [
-        "tpms:0a1b2c3d",
-        "ble:cc:cc:cc:00:00:03",
-        "ble:aa:aa:aa:00:00:01"
-      ]
-    }
-  },
-  {
-    "type": "verdicts",
-    "judge_line": 12,
-    "boot_ns": 607000000000,
-    "verdicts": []
-  },
-  {
-    "type": "coverage",
-    "boot_ns": 1207000000000,
-    "sources": [
-      {
-        "source": "sensio",
-        "lines": 12,
-        "events": 12,
-        "rejected": 0,
-        "withheld": 0,
-        "dropped": 0,
-        "last_boot_ns": 1206000000000,
-        "kinds": {
-          "ble_advert": {
-            "events": 6,
-            "last_boot_ns": 1203000000000
-          },
-          "gnss_fix": {
-            "events": 3,
-            "last_boot_ns": 1202000000000
-          },
-          "tpms": {
-            "events": 3,
-            "last_boot_ns": 1206000000000
-          }
-        }
-      }
-    ],
-    "feed_rejected": 0,
-    "torn": 0,
-    "slept_ns": 0
-  },
-  {
-    "type": "emitters",
-    "judge_line": 16,
-    "describe_version": 3,
-    "recent_ns": 60000000000,
-    "at_ns": 1800001205000000000,
-    "movement": "parked",
-    "emitters": [
-      {
-        "device": "ble:aa:aa:aa:00:00:01",
-        "kind": "ble",
-        "receivers": [],
-        "first_seen_ns": 1800000001000000000,
-        "last_seen_ns": 1800001201000000000,
-        "sightings": 3,
-        "latest_dbm": -57.0,
-        "strongest_dbm": -57.0,
-        "band": "strong",
-        "recent": [
-          {
-            "sightings": 1
-          }
-        ],
-        "address": "ble"
-      },
-      {
-        "device": "tpms:0a1b2c3d",
-        "kind": "tpms",
-        "receivers": [],
-        "first_seen_ns": 1800000004000000000,
-        "last_seen_ns": 1800001204000000000,
-        "sightings": 3,
-        "latest_dbm": -12.0,
-        "strongest_dbm": -12.0,
-        "band": "unknown",
-        "recent": [
-          {
-            "sightings": 1
-          }
-        ],
-        "address": "not_an_address"
-      }
-    ],
-    "older": 2,
+    "older": 3,
     "texture": {
       "counts": {
         "access_point": 0,
@@ -225,58 +103,56 @@ expression: "live(FEED, true)[1..]"
   },
   {
     "type": "verdicts",
-    "judge_line": 16,
-    "boot_ns": 1207000000000,
+    "judge_line": 17,
+    "boot_ns": 626000000000,
     "verdicts": [
       {
         "device": "ble:aa:aa:aa:00:00:01",
         "rule": "persistence.places",
-        "rule_set_version": 1,
-        "first_seen_ns": 1800000001000000000,
-        "last_seen_ns": 1800001201000000000,
-        "sightings": 3,
+        "rule_set_version": 2,
+        "first_seen_ns": 1800000011000000000,
+        "last_seen_ns": 1800000621000000000,
+        "sightings": 2,
         "unlocated_sightings": 0,
         "places": [
           {
-            "first_seen_ns": 1800000001000000000,
+            "first_seen_ns": 1800000011000000000,
             "lat_deg": 60.0,
-            "lon_deg": 10.0
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000000000000000,
+            "stopped_to_ns": 1800000130000000000
           },
           {
-            "first_seen_ns": 1800000601000000000,
-            "lat_deg": 60.01,
-            "lon_deg": 10.0
-          },
-          {
-            "first_seen_ns": 1800001201000000000,
-            "lat_deg": 60.02,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800000621000000000,
+            "lat_deg": 60.05,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000490000000000,
+            "stopped_to_ns": 1800000620000000000
           }
         ]
       },
       {
         "device": "tpms:0a1b2c3d",
         "rule": "persistence.places",
-        "rule_set_version": 1,
-        "first_seen_ns": 1800000004000000000,
-        "last_seen_ns": 1800001204000000000,
-        "sightings": 3,
+        "rule_set_version": 2,
+        "first_seen_ns": 1800000014000000000,
+        "last_seen_ns": 1800000623000000000,
+        "sightings": 2,
         "unlocated_sightings": 0,
         "places": [
           {
-            "first_seen_ns": 1800000004000000000,
+            "first_seen_ns": 1800000014000000000,
             "lat_deg": 60.0,
-            "lon_deg": 10.0
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000000000000000,
+            "stopped_to_ns": 1800000130000000000
           },
           {
-            "first_seen_ns": 1800000604000000000,
-            "lat_deg": 60.01,
-            "lon_deg": 10.0
-          },
-          {
-            "first_seen_ns": 1800001204000000000,
-            "lat_deg": 60.02,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800000623000000000,
+            "lat_deg": 60.05,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000490000000000,
+            "stopped_to_ns": 1800000620000000000
           }
         ]
       }
@@ -284,28 +160,197 @@ expression: "live(FEED, true)[1..]"
   },
   {
     "type": "coverage",
-    "boot_ns": 1903000000000,
+    "boot_ns": 1117000000000,
     "sources": [
       {
         "source": "sensio",
-        "lines": 15,
-        "events": 15,
+        "lines": 19,
+        "events": 19,
         "rejected": 0,
-        "withheld": 1,
-        "dropped": 1,
-        "last_boot_ns": 1902000000000,
+        "withheld": 0,
+        "dropped": 0,
+        "last_boot_ns": 1116000000000,
         "kinds": {
           "ble_advert": {
-            "events": 8,
-            "last_boot_ns": 1902000000000
+            "events": 7,
+            "last_boot_ns": 1113000000000
           },
           "gnss_fix": {
-            "events": 4,
-            "last_boot_ns": 1802000000000
+            "events": 9,
+            "last_boot_ns": 1112000000000
           },
           "tpms": {
             "events": 3,
-            "last_boot_ns": 1206000000000
+            "last_boot_ns": 1116000000000
+          }
+        }
+      }
+    ],
+    "feed_rejected": 0,
+    "torn": 0,
+    "slept_ns": 0
+  },
+  {
+    "type": "emitters",
+    "judge_line": 23,
+    "describe_version": 3,
+    "recent_ns": 60000000000,
+    "at_ns": 1800001115000000000,
+    "movement": "stopped",
+    "emitters": [
+      {
+        "device": "ble:aa:aa:aa:00:00:01",
+        "kind": "ble",
+        "receivers": [],
+        "first_seen_ns": 1800000011000000000,
+        "last_seen_ns": 1800001111000000000,
+        "sightings": 3,
+        "latest_dbm": -57.0,
+        "strongest_dbm": -57.0,
+        "band": "strong",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "ble"
+      },
+      {
+        "device": "tpms:0a1b2c3d",
+        "kind": "tpms",
+        "receivers": [],
+        "first_seen_ns": 1800000014000000000,
+        "last_seen_ns": 1800001114000000000,
+        "sightings": 3,
+        "latest_dbm": -12.0,
+        "strongest_dbm": -12.0,
+        "band": "unknown",
+        "recent": [
+          {
+            "sightings": 1
+          }
+        ],
+        "address": "not_an_address"
+      }
+    ],
+    "older": 3,
+    "texture": {
+      "counts": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 1,
+        "bt_classic": 0,
+        "tpms": 1
+      },
+      "randomized_wifi": 0,
+      "new": {
+        "access_point": 0,
+        "station": 0,
+        "ble": 0,
+        "bt_classic": 0,
+        "tpms": 0
+      },
+      "newest": [
+        "tpms:0a1b2c3d",
+        "ble:aa:aa:aa:00:00:01"
+      ]
+    }
+  },
+  {
+    "type": "verdicts",
+    "judge_line": 23,
+    "boot_ns": 1117000000000,
+    "verdicts": [
+      {
+        "device": "ble:aa:aa:aa:00:00:01",
+        "rule": "persistence.places",
+        "rule_set_version": 2,
+        "first_seen_ns": 1800000011000000000,
+        "last_seen_ns": 1800001111000000000,
+        "sightings": 3,
+        "unlocated_sightings": 0,
+        "places": [
+          {
+            "first_seen_ns": 1800000011000000000,
+            "lat_deg": 60.0,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000000000000000,
+            "stopped_to_ns": 1800000130000000000
+          },
+          {
+            "first_seen_ns": 1800000621000000000,
+            "lat_deg": 60.05,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000490000000000,
+            "stopped_to_ns": 1800000620000000000
+          },
+          {
+            "first_seen_ns": 1800001111000000000,
+            "lat_deg": 60.1,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000980000000000,
+            "stopped_to_ns": 1800001110000000000
+          }
+        ]
+      },
+      {
+        "device": "tpms:0a1b2c3d",
+        "rule": "persistence.places",
+        "rule_set_version": 2,
+        "first_seen_ns": 1800000014000000000,
+        "last_seen_ns": 1800001114000000000,
+        "sightings": 3,
+        "unlocated_sightings": 0,
+        "places": [
+          {
+            "first_seen_ns": 1800000014000000000,
+            "lat_deg": 60.0,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000000000000000,
+            "stopped_to_ns": 1800000130000000000
+          },
+          {
+            "first_seen_ns": 1800000623000000000,
+            "lat_deg": 60.05,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000490000000000,
+            "stopped_to_ns": 1800000620000000000
+          },
+          {
+            "first_seen_ns": 1800001114000000000,
+            "lat_deg": 60.1,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000980000000000,
+            "stopped_to_ns": 1800001110000000000
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "type": "coverage",
+    "boot_ns": 1703000000000,
+    "sources": [
+      {
+        "source": "sensio",
+        "lines": 28,
+        "events": 28,
+        "rejected": 0,
+        "withheld": 1,
+        "dropped": 1,
+        "last_boot_ns": 1702000000000,
+        "kinds": {
+          "ble_advert": {
+            "events": 10,
+            "last_boot_ns": 1702000000000
+          },
+          "gnss_fix": {
+            "events": 15,
+            "last_boot_ns": 1602000000000
+          },
+          "tpms": {
+            "events": 3,
+            "last_boot_ns": 1116000000000
           }
         }
       }
@@ -316,18 +361,18 @@ expression: "live(FEED, true)[1..]"
   },
   {
     "type": "emitters",
-    "judge_line": 23,
+    "judge_line": 36,
     "describe_version": 3,
     "recent_ns": 60000000000,
-    "at_ns": 1800001901000000000,
-    "movement": "parked",
+    "at_ns": 1800001701000000000,
+    "movement": "stopped",
     "emitters": [
       {
         "device": "ble:dd:dd:dd:00:00:04",
         "kind": "ble",
         "receivers": [],
-        "first_seen_ns": 1800001900000000000,
-        "last_seen_ns": 1800001900000000000,
+        "first_seen_ns": 1800001700000000000,
+        "last_seen_ns": 1800001700000000000,
         "sightings": 1,
         "latest_dbm": -77.0,
         "strongest_dbm": -77.0,
@@ -340,7 +385,7 @@ expression: "live(FEED, true)[1..]"
         "address": "ble"
       }
     ],
-    "older": 4,
+    "older": 5,
     "texture": {
       "counts": {
         "access_point": 0,
@@ -364,63 +409,77 @@ expression: "live(FEED, true)[1..]"
   },
   {
     "type": "verdicts",
-    "judge_line": 23,
-    "boot_ns": 1903000000000,
+    "judge_line": 36,
+    "boot_ns": 1703000000000,
     "verdicts": [
       {
         "device": "ble:aa:aa:aa:00:00:01",
         "rule": "persistence.places",
-        "rule_set_version": 1,
-        "first_seen_ns": 1800000001000000000,
-        "last_seen_ns": 1800001801000000000,
+        "rule_set_version": 2,
+        "first_seen_ns": 1800000011000000000,
+        "last_seen_ns": 1800001481000000000,
         "sightings": 4,
         "unlocated_sightings": 0,
         "places": [
           {
-            "first_seen_ns": 1800000001000000000,
+            "first_seen_ns": 1800000011000000000,
             "lat_deg": 60.0,
-            "lon_deg": 10.0
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000000000000000,
+            "stopped_to_ns": 1800000130000000000
           },
           {
-            "first_seen_ns": 1800000601000000000,
-            "lat_deg": 60.01,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800000621000000000,
+            "lat_deg": 60.05,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000490000000000,
+            "stopped_to_ns": 1800000620000000000
           },
           {
-            "first_seen_ns": 1800001201000000000,
-            "lat_deg": 60.02,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800001111000000000,
+            "lat_deg": 60.1,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000980000000000,
+            "stopped_to_ns": 1800001110000000000
           },
           {
-            "first_seen_ns": 1800001801000000000,
-            "lat_deg": 60.03,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800001481000000000,
+            "lat_deg": 60.15,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800001470000000000,
+            "stopped_to_ns": 1800001600000000000
           }
         ]
       },
       {
         "device": "tpms:0a1b2c3d",
         "rule": "persistence.places",
-        "rule_set_version": 1,
-        "first_seen_ns": 1800000004000000000,
-        "last_seen_ns": 1800001204000000000,
+        "rule_set_version": 2,
+        "first_seen_ns": 1800000014000000000,
+        "last_seen_ns": 1800001114000000000,
         "sightings": 3,
         "unlocated_sightings": 0,
         "places": [
           {
-            "first_seen_ns": 1800000004000000000,
+            "first_seen_ns": 1800000014000000000,
             "lat_deg": 60.0,
-            "lon_deg": 10.0
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000000000000000,
+            "stopped_to_ns": 1800000130000000000
           },
           {
-            "first_seen_ns": 1800000604000000000,
-            "lat_deg": 60.01,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800000623000000000,
+            "lat_deg": 60.05,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000490000000000,
+            "stopped_to_ns": 1800000620000000000
           },
           {
-            "first_seen_ns": 1800001204000000000,
-            "lat_deg": 60.02,
-            "lon_deg": 10.0
+            "first_seen_ns": 1800001114000000000,
+            "lat_deg": 60.1,
+            "lon_deg": 10.0,
+            "stopped_from_ns": 1800000980000000000,
+            "stopped_to_ns": 1800001110000000000
           }
         ]
       }
@@ -428,28 +487,28 @@ expression: "live(FEED, true)[1..]"
   },
   {
     "type": "coverage",
-    "boot_ns": 1903000000000,
+    "boot_ns": 1703000000000,
     "sources": [
       {
         "source": "sensio",
-        "lines": 15,
-        "events": 15,
+        "lines": 28,
+        "events": 28,
         "rejected": 0,
         "withheld": 1,
         "dropped": 1,
-        "last_boot_ns": 1902000000000,
+        "last_boot_ns": 1702000000000,
         "kinds": {
           "ble_advert": {
-            "events": 8,
-            "last_boot_ns": 1902000000000
+            "events": 10,
+            "last_boot_ns": 1702000000000
           },
           "gnss_fix": {
-            "events": 4,
-            "last_boot_ns": 1802000000000
+            "events": 15,
+            "last_boot_ns": 1602000000000
           },
           "tpms": {
             "events": 3,
-            "last_boot_ns": 1206000000000
+            "last_boot_ns": 1116000000000
           }
         }
       }
@@ -461,8 +520,8 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "end",
     "reason": "input_closed",
-    "feed_lines": 23,
+    "feed_lines": 36,
     "judged": 3,
-    "events": 15
+    "events": 28
   }
 ]

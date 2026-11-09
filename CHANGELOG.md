@@ -19,6 +19,7 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 
 ### Changed
 
+- `persistence.places` counts stops, not points along the road: a place is a stop of at least 2 minutes (`min_stop_ns`, `peil judge --min-stop-s`), and a device is flagged when it is heard during stops at two places 500 m apart, at least 10 minutes from its first sighting to its last. A device heard along a whole drive collected a place every 500 m. Each place gives the stop's start and latest fix (`stopped_from_ns`, `stopped_to_ns`). `RULE_SET_VERSION` is 2.
 - Movement is measured over a 10 s window (`moving_window_ns`): moving when the newest fix at least 10 s before the latest is at least 2 m/s times the time between them away. Speed between consecutive fixes read a parked phone's GNSS jitter as moving and restarted the parked clock; driving off reads moving after about 20 m, and a stop reads moving for up to 10 s. Movement is unknown until the track spans the window. `DESCRIBE_VERSION` is 3.
 - The ring places each dot by its strongest recent signal on one scale, -40 dBm at the center to -100 at the edge, with circles at -60 and -80; the outer ring for emitters with no strength is drawn only when one is there. Most emitters on a drive are below -80 dBm, and the scale gives them more than half the ring's area.
 

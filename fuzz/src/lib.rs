@@ -272,6 +272,12 @@ pub struct Rule {
     pub place_separation_m: f64,
     /// Seconds a fix stays usable.
     pub max_fix_age_s: i16,
+    /// Meters a second over the movement window for moving.
+    pub moving_mps: f64,
+    /// Seconds in the movement window.
+    pub moving_window_s: i16,
+    /// Seconds a stop lasts before it is a place.
+    pub min_stop_s: i16,
 }
 
 impl Rule {
@@ -283,6 +289,9 @@ impl Rule {
             min_span_ns: i64::from(self.min_span_s) * NS_PER_S,
             place_separation_m: self.place_separation_m,
             max_fix_age_ns: i64::from(self.max_fix_age_s) * NS_PER_S,
+            moving_mps: self.moving_mps,
+            moving_window_ns: i64::from(self.moving_window_s) * NS_PER_S,
+            min_stop_ns: i64::from(self.min_stop_s) * NS_PER_S,
         }
     }
 }

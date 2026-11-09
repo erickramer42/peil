@@ -123,18 +123,21 @@ fn vendor_table(path: Option<&PathBuf>) -> Result<VendorTable> {
 
 #[derive(Args)]
 struct RuleArgs {
-    /// Distinct places a device must be seen at [default: the rule set's].
+    /// Distinct stops a device must be heard during [default: the rule set's].
     #[arg(long)]
     min_places: Option<usize>,
     /// Seconds from a device's first sighting to its last, at least.
     #[arg(long)]
     min_span_s: Option<u32>,
-    /// Meters between sightings for them to count as different places.
+    /// Meters between stops for them to count as different places.
     #[arg(long)]
     place_separation_m: Option<f64>,
     /// Seconds a GNSS fix stays usable for placing a sighting.
     #[arg(long)]
     max_fix_age_s: Option<u32>,
+    /// Seconds the vehicle must stay stopped for the stop to be a place.
+    #[arg(long)]
+    min_stop_s: Option<u32>,
 }
 
 impl RuleArgs {
@@ -151,6 +154,10 @@ impl RuleArgs {
             max_fix_age_ns: self
                 .max_fix_age_s
                 .map_or(defaults.max_fix_age_ns, |s| i64::from(s) * NS_PER_S),
+            min_stop_ns: self
+                .min_stop_s
+                .map_or(defaults.min_stop_ns, |s| i64::from(s) * NS_PER_S),
+            ..defaults
         };
         rule.validate()
             .map_err(|reason| anyhow!("invalid rule parameters: {reason}"))?;

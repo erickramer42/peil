@@ -389,21 +389,25 @@ fn a_remote_stamp_goes_through_its_receivers_offset() {
         .expect("serializes")
     };
     let offset = r#"{"type":"offset","receiver":"rear-pi","offset_ns":-500000000000,"uncertainty_ns":1000000}"#;
-    let body = [
-        offset.to_owned(),
-        gnss(1, 0, 60.0),
-        remote(2, 1_000_000_000),
-        gnss(3, 600_000_000_000, 60.01),
-        remote(4, 601_000_000_000),
-        gnss(5, 1_200_000_000_000, 60.02),
-        remote(6, 1_201_000_000_000),
-        JUDGE.to_owned(),
-    ];
+    // Three stops of 130 s, 600 s and 0.05 degree apart; the sighting is
+    // stamped a second after each stop's second fix.
+    let mut body = vec![offset.to_owned()];
+    let mut seq = 0;
+    for (k, lat) in [(0i64, 60.0), (1, 60.05), (2, 60.1)] {
+        let at = k * 600_000_000_000;
+        for fix in [0, 10_000_000_000, 130_000_000_000] {
+            seq += 1;
+            body.push(gnss(seq, at + fix, lat));
+        }
+        seq += 1;
+        body.push(remote(seq, at + 11_000_000_000));
+    }
+    body.push(JUDGE.to_owned());
     let lines = live(&feed(&body), false);
     assert!(rejections(&lines).is_empty(), "{lines:?}");
     let verdicts = answers(&lines).pop().expect("an answer").to_vec();
     assert_eq!(verdicts.len(), 1);
-    assert_eq!(verdicts[0].first_seen_ns, BOOT_TO_UTC + 1_000_000_000);
+    assert_eq!(verdicts[0].first_seen_ns, BOOT_TO_UTC + 11_000_000_000);
     assert_eq!(verdicts[0].unlocated_sightings, 0);
 }
 

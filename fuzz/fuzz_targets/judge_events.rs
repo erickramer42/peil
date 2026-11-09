@@ -78,6 +78,11 @@ fuzz_target!(|session: Session| {
                 (v.first_seen_ns..=v.last_seen_ns).contains(&p.first_seen_ns),
                 "{v:?}"
             );
+            assert!(p.stopped_from_ns <= p.first_seen_ns, "{v:?}");
+            assert!(
+                p.stopped_to_ns.saturating_sub(p.stopped_from_ns) >= rule.min_stop_ns,
+                "a place shorter than the stop it needs: {v:?}"
+            );
             for q in &v.places[i + 1..] {
                 assert!(
                     p.first_seen_ns <= q.first_seen_ns,

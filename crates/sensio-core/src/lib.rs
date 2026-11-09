@@ -13,6 +13,7 @@ pub mod feed;
 pub mod geo;
 pub mod judge;
 pub mod live;
+mod movement;
 
 pub use describe::{DESCRIBE_VERSION, DescribeParams, Picture, VendorTable, describe};
 pub use event::{DeviceId, Event, EventKind, ParseError, TimeNs, parse_jsonl};

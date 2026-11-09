@@ -8,13 +8,13 @@
 //! events, its parameters and its tables, so a replay describes the same way.
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
 use crate::event::{DeviceId, Event, EventKind, ServiceData, TimeNs, WifiSecurity};
-use crate::geo::distance_m;
 use crate::judge::order_key;
+use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
@@ -773,50 +773,24 @@ struct Recent {
 /// order.
 #[derive(Debug, Clone, Default)]
 struct MovementFold {
-    /// The fixes the window can still reach, oldest first: the newest fix at
-    /// least a window before the latest, and those after it, at most one a
-    /// second but the latest, so a burst of fixes can't grow it.
-    fixes: VecDeque<(TimeNs, f64, f64)>,
+    window: Window,
     moving: Option<bool>,
     stopped_since: Option<TimeNs>,
 }
 
 impl MovementFold {
     /// Adds the next fix; a fix after `now_ns` doesn't count, and without a
-    /// `now_ns` every fix does. Fixes come in the judge's order, so a fix
-    /// earlier than the latest can't arrive; one would be skipped.
-    fn observe(
-        &mut self,
-        fix: (TimeNs, f64, f64),
-        now_ns: Option<TimeNs>,
-        params: &DescribeParams,
-    ) {
-        let (t1, lat1, lon1) = fix;
-        if now_ns.is_some_and(|now| t1 > now) || self.fixes.back().is_some_and(|b| t1 < b.0) {
+    /// `now_ns` every fix does.
+    fn observe(&mut self, fix: Fix, now_ns: Option<TimeNs>, params: &DescribeParams) {
+        if now_ns.is_some_and(|now| fix.0 > now) {
             return;
         }
-        let len = self.fixes.len();
-        if len >= 2 && self.fixes[len - 1].0.saturating_sub(self.fixes[len - 2].0) < NS_PER_S {
-            self.fixes.pop_back();
-        }
-        self.fixes.push_back(fix);
-        while self
-            .fixes
-            .get(1)
-            .is_some_and(|f| t1.saturating_sub(f.0) >= params.moving_window_ns)
-        {
-            self.fixes.pop_front();
-        }
-        let Some(&(t0, lat0, lon0)) = self.fixes.front() else {
+        let Some((fast, (t0, _, _))) =
+            self.window
+                .observe(fix, params.moving_window_ns, params.moving_mps)
+        else {
             return;
         };
-        let elapsed = t1.saturating_sub(t0);
-        if elapsed < params.moving_window_ns {
-            return;
-        }
-        #[allow(clippy::cast_precision_loss)]
-        let seconds = elapsed as f64 / 1e9;
-        let fast = distance_m(lat0, lon0, lat1, lon1) / seconds >= params.moving_mps;
         if fast {
             self.stopped_since = None;
         } else if self.stopped_since.is_none() {
@@ -1054,27 +1028,4 @@ fn loud_first(a: &Description, b: &Description) -> Ordering {
             strength(b).total_cmp(&strength(a))
         })
         .then_with(|| a.device.cmp(&b.device))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{DescribeParams, MovementFold, NS_PER_S};
-
-    #[test]
-    fn a_burst_of_fixes_keeps_the_movement_history_bounded() {
-        let params = DescribeParams::default();
-        let mut fold = MovementFold::default();
-        let t0 = 1_800_000_000 * NS_PER_S;
-        // Ten thousand fixes at one instant, then a thousand a millisecond
-        // apart, then a minute at 1 Hz.
-        let times = std::iter::repeat_n(t0, 10_000)
-            .chain((1..=1_000).map(|i| t0 + i * 1_000_000))
-            .chain((1..=60).map(|i| t0 + 2 * NS_PER_S + i * NS_PER_S));
-        for t in times {
-            fold.observe((t, 60.0, 10.0), None, &params);
-            // One a second across the window, its oldest and the latest.
-            assert!(fold.fixes.len() <= 13, "{} fixes held", fold.fixes.len());
-        }
-        assert_eq!(fold.moving, Some(false));
-    }
 }

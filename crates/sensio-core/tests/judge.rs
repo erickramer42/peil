@@ -1,14 +1,16 @@
 //! The judge against a synthetic drive: golden verdicts, order independence,
 //! and parsing that rejects bad input.
 //!
-//! The drive (`fixtures/drive.jsonl`) moves north about 1.1 km between fixes.
-//! One BLE device and one TPMS sensor travel with it; others are seen once,
-//! twice, or with no recent fix.
+//! The drive (`fixtures/drive.jsonl`) stops four times for 130 s, 0.05 degree
+//! (about 5.6 km) apart, and once for 40 s at a traffic light. One BLE device
+//! is heard at every stop and one TPMS sensor at three; one device is heard at
+//! the first stop and on the road, one at the first stop and the light, one
+//! once, and one with no recent fix.
 //!
-//! The Wi-Fi drive (`fixtures/drive_wifi.jsonl`) takes the same route with two
-//! receivers, the phone and the laptop: a hotspot both of them see stays with
-//! it, a station on that hotspot stays for three places, and two others are
-//! seen once.
+//! The Wi-Fi drive (`fixtures/drive_wifi.jsonl`) makes the same four stops with
+//! two receivers, the phone and the laptop: a hotspot both of them see stays
+//! with it, a station on that hotspot stays for three stops, and two others
+//! are heard once.
 
 use std::io::Cursor;
 
@@ -58,6 +60,77 @@ fn stricter_rule_flags_fewer_devices() {
     let verdicts = judge(&drive(), &rule);
     let devices: Vec<&str> = verdicts.iter().map(|v| v.device.as_str()).collect();
     assert_eq!(devices, ["ble:aa:aa:aa:00:00:01"]);
+}
+
+#[test]
+fn passing_along_a_road_is_not_a_place() {
+    // cc is heard at the first stop and again on the road.
+    let verdicts = judge(&drive(), &PersistenceRule::default());
+    assert!(
+        verdicts
+            .iter()
+            .all(|v| v.device.as_str() != "ble:cc:cc:cc:00:00:03"),
+        "{verdicts:?}"
+    );
+}
+
+#[test]
+fn a_traffic_light_is_not_a_place_unless_short_stops_count() {
+    // ee is heard at the first stop and at a 40 s light.
+    let flagged = |rule: &PersistenceRule| {
+        judge(&drive(), rule)
+            .iter()
+            .any(|v| v.device.as_str() == "ble:ee:ee:ee:00:00:05")
+    };
+    assert!(!flagged(&PersistenceRule::default()));
+    assert!(flagged(&PersistenceRule {
+        min_stop_ns: 30 * 1_000_000_000,
+        ..PersistenceRule::default()
+    }));
+}
+
+#[test]
+fn a_stop_reached_again_is_one_place() {
+    // Stop at A, drive to B and stop, drive back and stop at A again: the
+    // device heard at all three stops is at two places, A and B.
+    let s = 1_000_000_000_i64;
+    let t0 = 1_800_000_000 * s;
+    let fix = |t: i64, lat: f64| {
+        format!(
+            r#"{{"t_ns":{},"source":"gpsd","kind":"gnss_fix","lat_deg":{lat},"lon_deg":10.0}}"#,
+            t0 + t * s
+        )
+    };
+    let tag = |t: i64| {
+        format!(
+            r#"{{"t_ns":{},"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01"}}"#,
+            t0 + t * s
+        )
+    };
+    let mut lines = Vec::new();
+    for (at, lat) in [(0, 60.0), (600, 60.05), (1200, 60.0)] {
+        lines.extend([
+            fix(at, lat),
+            fix(at + 10, lat),
+            tag(at + 11),
+            fix(at + 130, lat),
+        ]);
+    }
+    let events = parse_jsonl(Cursor::new(lines.join(
+        "
+",
+    )))
+    .expect("parses");
+    let verdicts = judge(&events, &PersistenceRule::default());
+    assert_eq!(verdicts.len(), 1);
+    let lats: Vec<f64> = verdicts[0].places.iter().map(|p| p.lat_deg).collect();
+    assert_eq!(lats, [60.0, 60.05]);
+    let three = PersistenceRule {
+        min_places: 3,
+        ..PersistenceRule::default()
+    };
+    let none: [sensio_core::Verdict; 0] = [];
+    assert_eq!(judge(&events, &three), none);
 }
 
 #[test]
@@ -312,6 +385,31 @@ fn a_rule_rejects_negative_durations() {
         ..PersistenceRule::default()
     };
     assert_eq!(age.validate(), Err("max_fix_age_ns must not be negative"));
+    let stop = PersistenceRule {
+        min_stop_ns: -1,
+        ..PersistenceRule::default()
+    };
+    assert_eq!(stop.validate(), Err("min_stop_ns must not be negative"));
+}
+
+#[test]
+fn a_rule_needs_a_movement_window_and_speed() {
+    let window = PersistenceRule {
+        moving_window_ns: 0,
+        ..PersistenceRule::default()
+    };
+    assert_eq!(window.validate(), Err("moving_window_ns must be above 0"));
+    for moving_mps in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+        let rule = PersistenceRule {
+            moving_mps,
+            ..PersistenceRule::default()
+        };
+        assert_eq!(
+            rule.validate(),
+            Err("moving_mps must be a finite speed above 0"),
+            "{moving_mps}"
+        );
+    }
 }
 
 #[test]

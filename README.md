@@ -19,7 +19,7 @@ It reads what established sensors already see (an Android phone's own scans and 
 - **See what's transmitting:** every emitter, loudest first: its kind, signal band (strength, never distance), vendor, tracker network and Wi-Fi security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).
   - `peil describe` prints it; the app draws it as a ring and a list.
   - The ambient texture: emitters of each kind in the last minute, the new ones, randomized Wi-Fi.
-- **Judge whether a device stays with you:** `peil judge` runs the first rule, `persistence.places`, a device seen at several distinct places over time.
+- **Judge whether a device stays with you:** `peil judge` runs the first rule, `persistence.places`, a device heard during the vehicle's stops at distinct places over time.
 - **Run live, replay later:** `peil live` reads the feed the app writes and answers with the picture, coverage and verdicts; a saved feed replays to the same bytes.
 - **The phone app:** Android 12 or later; it reads the phone's Wi-Fi, BLE and GNSS and keeps each session's raw lines on the phone.
   - Tap a dot for its details and the emitters closest to it in signal strength; mark your own devices to hide them.
