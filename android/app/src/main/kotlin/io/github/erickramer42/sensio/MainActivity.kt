@@ -202,7 +202,7 @@ class MainActivity : Activity() {
     private fun line(e: Emitter): String {
         val dbm = e.latestDbm?.let { "%4.0f".format(it) } ?: "   ?"
         val what = listOfNotNull(
-            e.tracker?.let { Labels.TRACKERS[it] ?: it },
+            Labels.tracker(e),
             e.category,
             e.ssid?.let { "\"$it\"" },
             e.vendor,

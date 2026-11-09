@@ -32,7 +32,7 @@ object TextureText {
         val newest = texture.newest.filter { it !in enrolled }.map { device ->
             val e = byDevice[device]
             val what = e?.let {
-                it.tracker?.let { t -> Labels.TRACKERS[t] ?: t }
+                Labels.tracker(it)
                     ?: it.category
                     ?: it.ssid?.let { s -> "\"$s\"" }
                     ?: it.vendor

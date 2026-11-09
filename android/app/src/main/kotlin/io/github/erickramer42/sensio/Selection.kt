@@ -34,7 +34,7 @@ object Selection {
     /** What the describe layer says about [e], a line per fact, for the card. */
     fun card(e: Emitter, atNs: Long): List<String> = buildList {
         val kind = Labels.KINDS[e.kind] ?: e.kind
-        add(listOfNotNull(kind, e.device.substringAfter(':'), e.tracker?.let { Labels.TRACKERS[it] ?: it }).joinToString("  "))
+        add(listOfNotNull(kind, e.device.substringAfter(':'), Labels.tracker(e)).joinToString("  "))
         val strength = listOfNotNull(
             e.latestDbm?.let { "latest %.0f dBm".format(it) },
             e.strongestDbm?.let { "strongest %.0f dBm".format(it) },

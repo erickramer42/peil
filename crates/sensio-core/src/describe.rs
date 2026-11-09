@@ -303,7 +303,15 @@ fn texture(emitters: &[Description], recent_from: TimeNs, newest: usize) -> Text
 /// - `apple-find-my`: manufacturer data with Apple's company ID 0x004C whose
 ///   first byte is 0x12, "offline finding"; `OpenHaystack`'s firmware,
 ///   github.com/seemoo-lab/openhaystack, `Firmware/Microbit_v1/offline-finding/main.c`
-///   (read 2026-11-07).
+///   (read 2026-11-07). Its third byte is a status byte whose bits 4 and 5
+///   name the device: 1 an `AirTag` (`apple-find-my-airtag`), 2 another
+///   maker's Find My accessory (`apple-find-my-accessory`), both trackers; 3
+///   `AirPods` (`apple-find-my-airpods`, audio); 0 another Apple device
+///   (`apple-find-my-apple-device`); without a third byte, the entry is
+///   `apple-find-my`. `AirGuard`'s `DeviceManager.kt`, `calculateDeviceType`,
+///   with each type's `statusByteDeviceType` under `types/`,
+///   github.com/seemoo-lab/AirGuard, `app/src/main/java/de/seemoo/at_tracking_detection/database/models/device/`
+///   (read 2026-11-08).
 /// - `google-find-hub`: service data under UUID 0xFEAA with frame type 0x40, or
 ///   0x41 in unwanted-tracking-protection mode; Google's Find Hub Network
 ///   accessory specification, developers.google.com/nearby/fast-pair/specifications/extensions/fmdn
@@ -317,23 +325,35 @@ fn texture(emitters: &[Description], recent_from: TimeNs, newest: usize) -> Text
 fn tracker(
     manufacturer: &[crate::event::ManufacturerData],
     service: &[ServiceData],
-) -> Option<(Tracker, &'static str)> {
-    let apple = manufacturer.iter().any(|m| {
+) -> Option<(Tracker, Category)> {
+    let found = |tracker, category, entry| Some((tracker, Category { category, entry }));
+    let apple = manufacturer.iter().find(|m| {
         m.company_id == 0x004c
             && m.data
                 .get(..2)
                 .is_some_and(|t| t.eq_ignore_ascii_case("12"))
     });
-    if apple {
-        return Some((Tracker::AppleFindMy, "apple-find-my"));
+    if let Some(m) = apple {
+        let status = m
+            .data
+            .get(4..6)
+            .and_then(|s| u8::from_str_radix(s, 16).ok());
+        let (category, entry) = match status.map(|s| (s >> 4) & 0x03) {
+            Some(1) => ("tracker", "apple-find-my-airtag"),
+            Some(2) => ("tracker", "apple-find-my-accessory"),
+            Some(3) => ("audio", "apple-find-my-airpods"),
+            Some(_) => ("apple-device", "apple-find-my-apple-device"),
+            None => ("tracker", "apple-find-my"),
+        };
+        return found(Tracker::AppleFindMy, category, entry);
     }
     for entry in service {
         match short_uuid(&entry.uuid).as_deref() {
             Some("feaa") if entry.data.get(..2).is_some_and(|t| t == "40" || t == "41") => {
-                return Some((Tracker::GoogleFindHub, "google-find-hub"));
+                return found(Tracker::GoogleFindHub, "tracker", "google-find-hub");
             }
-            Some("fcb2") => return Some((Tracker::Dult, "dult")),
-            Some("feed" | "feec" | "fd84") => return Some((Tracker::Tile, "tile")),
+            Some("fcb2") => return found(Tracker::Dult, "tracker", "dult"),
+            Some("feed" | "feec" | "fd84") => return found(Tracker::Tile, "tracker", "tile"),
             _ => {}
         }
     }
@@ -559,7 +579,7 @@ struct Track {
     latest_dbm: Option<f32>,
     addr: Option<String>,
     company_ids: Vec<u16>,
-    tracker: Option<(Tracker, &'static str)>,
+    tracker: Option<(Tracker, Category)>,
     security: Option<WifiSecurity>,
     device_class: Option<u32>,
 }
@@ -885,10 +905,7 @@ fn description(
         tracker: track.tracker.map(|(t, _)| t),
         security: track.security,
         category: match track.tracker {
-            Some((_, entry)) => Some(Category {
-                category: "tracker",
-                entry,
-            }),
+            Some((_, category)) => Some(category),
             None => track.device_class.and_then(classic_category),
         },
     }

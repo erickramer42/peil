@@ -177,9 +177,58 @@ fn the_tracker_formats_are_recognized() {
         Some(("tracker", "tile"))
     );
     assert_eq!(picture.emitters[0].company_ids, [0x004c]);
+    // Status 0xaa: bits 4 and 5 are 2, another maker's Find My accessory.
     assert_eq!(
         picture.emitters[0].category.map(|c| (c.category, c.entry)),
-        Some(("tracker", "apple-find-my"))
+        Some(("tracker", "apple-find-my-accessory"))
+    );
+}
+
+#[test]
+fn a_find_my_adverts_status_byte_names_the_device() {
+    // Status bytes with bits 4 and 5 set to 1, 2, 3 and 0, other bits set
+    // around them; then an advert too short to carry a status byte.
+    let apple = |n: u8, data: &str| {
+        ble(
+            T0,
+            &format!("aa:aa:aa:00:00:{n:02x}"),
+            -60 - i16::from(n),
+            &format!(r#","manufacturer_data":[{{"company_id":76,"data":"{data}"}}]"#),
+        )
+    };
+    let events = events(&[
+        apple(1, "1219d0aa"),
+        apple(2, "1202e5"),
+        apple(3, "1219f0"),
+        apple(4, "1219cf"),
+        apple(5, "1219"),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    assert!(
+        picture
+            .emitters
+            .iter()
+            .all(|e| e.tracker == Some(Tracker::AppleFindMy))
+    );
+    let categories: Vec<Option<(&str, &str)>> = picture
+        .emitters
+        .iter()
+        .map(|e| e.category.map(|c| (c.category, c.entry)))
+        .collect();
+    assert_eq!(
+        categories,
+        [
+            Some(("tracker", "apple-find-my-airtag")),
+            Some(("tracker", "apple-find-my-accessory")),
+            Some(("audio", "apple-find-my-airpods")),
+            Some(("apple-device", "apple-find-my-apple-device")),
+            Some(("tracker", "apple-find-my")),
+        ]
     );
 }
 

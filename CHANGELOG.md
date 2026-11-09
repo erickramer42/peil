@@ -11,6 +11,7 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 ### Added
 
 - Tile's tracker format in the describe layer: service data under one of Tile's UUIDs names the Tile network, and the app shows it as a tracker. `DESCRIBE_VERSION` is 2.
+- A Find My advert's device, from its status byte: an AirTag, another maker's Find My accessory, AirPods or another Apple device, as the category entry (`apple-find-my-airtag` and the rest); the app shows it after the network ("Find My AirTag"). AirPods are categorized `audio` and other Apple devices `apple-device`, no longer `tracker`; all stay on the Find My network.
 
 ### Fixed
 

@@ -19,6 +19,8 @@ class Emitter(
     val security: String?,
     val category: String?,
     val firstSeenNs: Long = 0,
+    /** The table entry behind [category], which names an advert's device where its format does. */
+    val categoryEntry: String? = null,
 )
 
 /** The core's ambient texture: emitters in the recent window by kind, those first seen in it, and the newest. */
@@ -50,6 +52,19 @@ object Labels {
         "dult" to "DULT tracker",
         "tile" to "Tile",
     )
+
+    /** The devices a tracker format's category entry names. */
+    val DEVICES = mapOf(
+        "apple-find-my-airtag" to "AirTag",
+        "apple-find-my-accessory" to "accessory",
+        "apple-find-my-airpods" to "AirPods",
+        "apple-find-my-apple-device" to "Apple device",
+    )
+
+    /** An emitter's tracker network, with the device its advert names: "Find My AirTag". */
+    fun tracker(e: Emitter): String? = e.tracker?.let { t ->
+        listOfNotNull(TRACKERS[t] ?: t, DEVICES[e.categoryEntry]).joinToString(" ")
+    }
 }
 
 /** The verdict stream's lines the display uses. Other types are skipped, as ADR-0005 says readers do. */
@@ -88,6 +103,7 @@ object VerdictStream {
                 security = security,
                 category = e.optJSONObject("category")?.optString("category"),
                 firstSeenNs = e.optLong("first_seen_ns"),
+                categoryEntry = e.optJSONObject("category")?.optString("entry")?.ifEmpty { null },
             )
         }
         val recentNs = o.optLong("recent_ns")
