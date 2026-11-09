@@ -268,6 +268,131 @@ fn a_smarttag_is_fd5a_service_data_whose_first_byte_masks_to_0x10() {
 }
 
 #[test]
+fn flock_network_names_match_the_firmwares_forms_and_nothing_near_them() {
+    let names = [
+        "Flock-a1b2c3",
+        "FLOCK-A1B2C3",
+        "Flock",
+        "Flock Camera net.",
+        "FS Ext Battery",
+        // Not hex, one digit short, one over, the wrong case, a name that
+        // merely contains the word, and a common word left out of the table.
+        "Flock-Family",
+        "Flock-a1b2c",
+        "Flock-a1b2c3d",
+        "flock-a1b2c3",
+        "My Flock",
+        "Penguin",
+    ];
+    let lines: Vec<String> = names
+        .iter()
+        .zip(1u8..)
+        .map(|(name, n)| {
+            format!(
+                r#"{{"t_ns":{T0},"source":"sensio","kind":"wifi_ap","bssid":"cc:cc:cc:00:00:{n:02x}","ssid":"{name}","rssi_dbm":{}}}"#,
+                -40 - i16::from(n)
+            )
+        })
+        .collect();
+    let picture = describe(
+        &events(&lines),
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let entries: Vec<Option<(&str, &str)>> = picture
+        .emitters
+        .iter()
+        .map(|e| e.category.map(|c| (c.category, c.entry)))
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            Some(("flock-class", "flock-softap")),
+            Some(("flock-class", "flock-softap")),
+            Some(("flock-class", "flock-ssid")),
+            Some(("flock-class", "flock-camera-net")),
+            Some(("flock-class", "flock-ext-battery-ap")),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+    );
+}
+
+#[test]
+fn flocks_address_block_marks_wifi_emitters_only() {
+    // Built from parts, since these prefixes are real and the rest is made up.
+    let block = "b4:1e:52";
+    let next_block = "b4:1e:53";
+    let station = |addr: &str, rssi: i16| {
+        format!(
+            r#"{{"t_ns":{T0},"source":"sensio","kind":"wifi_client","addr":"{addr}","rssi_dbm":{rssi}}}"#
+        )
+    };
+    let events = events(&[
+        ap(T0, &format!("{block}:00:00:01"), -41),
+        station(&format!("{block}:00:00:02"), -42),
+        ap(T0, &format!("{next_block}:00:00:03"), -43),
+        ble(T0, &format!("{block}:00:00:04"), -44, ""),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let entries: Vec<Option<&str>> = picture
+        .emitters
+        .iter()
+        .map(|e| e.category.map(|c| c.entry))
+        .collect();
+    assert_eq!(entries, [Some("flock-oui"), Some("flock-oui"), None, None]);
+}
+
+#[test]
+fn the_battery_packs_company_id_names_flock_class_unless_a_tracker_format_does() {
+    let with = |n: u8, manufacturer: &str| {
+        ble(
+            T0,
+            &format!("aa:aa:aa:00:00:{n:02x}"),
+            -40 - i16::from(n),
+            &format!(r#","manufacturer_data":[{manufacturer}]"#),
+        )
+    };
+    let events = events(&[
+        with(1, r#"{"company_id":2504,"data":"aabb"}"#),
+        with(2, r#"{"company_id":2505,"data":"aabb"}"#),
+        with(
+            3,
+            r#"{"company_id":2504,"data":"aabb"},{"company_id":76,"data":"1219d0"}"#,
+        ),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let entries: Vec<Option<(&str, &str)>> = picture
+        .emitters
+        .iter()
+        .map(|e| e.category.map(|c| (c.category, c.entry)))
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            Some(("flock-class", "flock-battery-company-id")),
+            None,
+            Some(("tracker", "apple-find-my-airtag")),
+        ]
+    );
+}
+
+#[test]
 fn service_data_under_other_uuids_names_no_tracker() {
     // 0xFEEE is next to Tile's 0xFEED; 0xFD00 and 0xFE2C belong to other
     // companies; a 128-bit UUID off the Bluetooth base isn't a short one; a

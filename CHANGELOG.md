@@ -13,6 +13,7 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 - Tile's tracker format in the describe layer: service data under one of Tile's UUIDs names the Tile network, and the app shows it as a tracker. `DESCRIBE_VERSION` is 2.
 - A Find My advert's device, from its status byte: an AirTag, another maker's Find My accessory, AirPods or another Apple device, as the category entry (`apple-find-my-airtag` and the rest); the app shows it after the network ("Find My AirTag"). AirPods are categorized `audio` and other Apple devices `apple-device`, no longer `tracker`; all stay on the Find My network.
 - Samsung's SmartTag format: service data under 0xFD5A whose first byte, masked with 0xF8, is 0x10 names the SmartThings Find network (`smartthings_find`, `samsung-smarttag`); the app shows "SmartThings SmartTag".
+- Flock Safety's equipment as the category `flock-class`, meaning consistent with it: an access point named `Flock-` and six hex digits, `Flock`, `Flock Camera net.` or `FS Ext Battery`, a Wi-Fi address in the block b4:1e:52, or BLE manufacturer data under company ID 0x09C8 (XUNTONG's, seen on the battery pack). The entry that matched says which. The app's screen-off BLE scan also keeps that company ID.
 
 ### Changed
 

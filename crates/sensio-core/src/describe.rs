@@ -428,6 +428,60 @@ fn classic_category(class: u32) -> Option<Category> {
     Some(Category { category, entry })
 }
 
+/// Flock Safety's equipment, as far as what an emitter announces can say
+/// (ADR-0006 section 4). The category, `flock-class`, means consistent with
+/// that equipment and no more: anyone can name a network this way, so the
+/// entry that matched is the evidence.
+///
+/// - `flock-softap`: an access point named `Flock-` and six hex digits, the
+///   end of the camera's Wi-Fi address; `flock-ssid`: one named exactly
+///   `Flock`; `flock-ext-battery-ap`: one named exactly `FS Ext Battery`.
+///   `datasets/firmware_derived_signatures.md`, github.com/simeononsecurity/flock-you-esp32
+///   (read 2026-11-08).
+/// - `flock-softap` also takes the `FLOCK-` spelling; `flock-camera-net`: an
+///   access point named exactly `Flock Camera net.`, whose addresses are
+///   randomized. That repository's `README.md`, "SSID Pattern Matching"
+///   (read 2026-11-08).
+/// - `flock-oui`: a Wi-Fi address in the block b4:1e:52, registered to Flock
+///   Safety; the `manuf` list of IEEE assignments, wireshark.org/download/automated/data/manuf.gz
+///   (read 2026-11-08). The other blocks seen on this equipment belong to
+///   component vendors and say nothing alone, so they aren't entries.
+/// - `flock-battery-company-id`: manufacturer data under company ID 0x09C8,
+///   which the firmware list above gives for the battery pack's adverts. The
+///   Bluetooth SIG's `company_identifiers.yaml` assigns it to XUNTONG, not
+///   Flock Safety, so another XUNTONG product matches too (read 2026-11-08).
+///
+/// Other published signatures rest on what the events don't carry: advertised
+/// device names (ADR-0006 section 6) and probe requests (ADR-0001 section 5).
+fn flock_category(track: &Track) -> Option<Category> {
+    let named = track.ssid.as_deref().and_then(|ssid| match ssid {
+        "Flock" => Some("flock-ssid"),
+        "Flock Camera net." => Some("flock-camera-net"),
+        "FS Ext Battery" => Some("flock-ext-battery-ap"),
+        _ => is_flock_softap(ssid).then_some("flock-softap"),
+    });
+    let block = matches!(track.kind, EmitterKind::AccessPoint | EmitterKind::Station)
+        && track
+            .addr
+            .as_deref()
+            .is_some_and(|a| a.starts_with("b4:1e:52:"));
+    let company = track.company_ids.binary_search(&0x09c8).is_ok();
+    let entry = named
+        .or(block.then_some("flock-oui"))
+        .or(company.then_some("flock-battery-company-id"))?;
+    Some(Category {
+        category: "flock-class",
+        entry,
+    })
+}
+
+/// Whether a network's name is the camera's setup hotspot.
+fn is_flock_softap(ssid: &str) -> bool {
+    ssid.strip_prefix("Flock-")
+        .or_else(|| ssid.strip_prefix("FLOCK-"))
+        .is_some_and(|tail| tail.len() == 6 && tail.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 /// A 16-bit UUID's four hex digits, lowercase, from its short form or its
 /// 128-bit form on the Bluetooth base UUID.
 fn short_uuid(uuid: &str) -> Option<String> {
@@ -924,7 +978,7 @@ fn description(
         security: track.security,
         category: match track.tracker {
             Some((_, category)) => Some(category),
-            None => track.device_class.and_then(classic_category),
+            None => flock_category(track).or_else(|| track.device_class.and_then(classic_category)),
         },
     }
 }

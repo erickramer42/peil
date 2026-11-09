@@ -476,11 +476,12 @@ class SessionService : Service() {
 
         /**
          * Screen-off BLE filters, from the spike on the test phone: Apple,
-         * Samsung, Google and Microsoft's company IDs, and the tracker and
-         * accessory services (Samsung's FD5A, Tile's FEED and FEEC, DULT's
-         * FCB2, Google's FEAA and FE2C).
+         * Samsung, Google and Microsoft's company IDs, XUNTONG's (the ID the
+         * describe layer's `flock-battery-company-id` entry matches), and the
+         * tracker and accessory services (Samsung's FD5A, Tile's FEED and
+         * FEEC, DULT's FCB2, Google's FEAA and FE2C).
          */
-        val SCREEN_OFF_COMPANIES = listOf(0x004C, 0x0075, 0x00E0, 0x0006)
+        val SCREEN_OFF_COMPANIES = listOf(0x004C, 0x0075, 0x00E0, 0x0006, 0x09C8)
         val SCREEN_OFF_SERVICES = listOf(0xFD5A, 0xFEED, 0xFEEC, 0xFCB2, 0xFEAA, 0xFE2C)
     }
 }
