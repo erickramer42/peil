@@ -38,7 +38,7 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "emitters",
     "judge_line": 12,
-    "describe_version": 2,
+    "describe_version": 3,
     "recent_ns": 60000000000,
     "at_ns": 1800000605000000000,
     "movement": "parked",
@@ -160,7 +160,7 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "emitters",
     "judge_line": 16,
-    "describe_version": 2,
+    "describe_version": 3,
     "recent_ns": 60000000000,
     "at_ns": 1800001205000000000,
     "movement": "parked",
@@ -317,7 +317,7 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "emitters",
     "judge_line": 23,
-    "describe_version": 2,
+    "describe_version": 3,
     "recent_ns": 60000000000,
     "at_ns": 1800001901000000000,
     "movement": "parked",

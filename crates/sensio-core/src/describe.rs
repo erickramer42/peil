@@ -8,7 +8,7 @@
 //! events, its parameters and its tables, so a replay describes the same way.
 
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use serde::Serialize;
 
@@ -18,7 +18,7 @@ use crate::judge::order_key;
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 2;
+pub const DESCRIBE_VERSION: u32 = 3;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -31,8 +31,13 @@ pub struct DescribeParams {
     pub weak_dbm: i16,
     /// How far back from the answer's time an emitter counts as recent.
     pub recent_ns: TimeNs,
-    /// At or above this speed between fixes, the vehicle is moving, in m/s.
+    /// At or above this speed over the movement window, the vehicle is
+    /// moving, in m/s.
     pub moving_mps: f64,
+    /// The movement window: speed is measured from the newest fix at least
+    /// this much older than the latest, so a parked receiver's jitter
+    /// between fixes a second apart averages out.
+    pub moving_window_ns: TimeNs,
     /// Stopped this long, it is parked.
     pub parked_after_ns: TimeNs,
     /// How many of the newest emitters the texture names.
@@ -46,6 +51,7 @@ impl Default for DescribeParams {
             weak_dbm: -80,
             recent_ns: 60 * NS_PER_S,
             moving_mps: 2.0,
+            moving_window_ns: 10 * NS_PER_S,
             parked_after_ns: 300 * NS_PER_S,
             newest: 5,
         }
@@ -67,6 +73,9 @@ impl DescribeParams {
         }
         if !self.moving_mps.is_finite() || self.moving_mps <= 0.0 {
             return Err("moving_mps must be a finite speed above 0");
+        }
+        if self.moving_window_ns <= 0 {
+            return Err("moving_window_ns must be above 0");
         }
         if self.parked_after_ns < 0 {
             return Err("parked_after_ns must not be negative");
@@ -214,7 +223,7 @@ pub enum Movement {
     Stopped,
     /// Stopped for at least `parked_after_ns`.
     Parked,
-    /// Fewer than two fixes.
+    /// No fix yet a movement window before the latest.
     Unknown,
 }
 
@@ -760,18 +769,22 @@ struct Recent {
     strongest_dbm: Option<f32>,
 }
 
-/// Whether the vehicle moved between consecutive fixes, folded in the
-/// judge's order.
-#[derive(Debug, Clone, Copy, Default)]
+/// Whether the vehicle moved over the movement window, folded in the judge's
+/// order.
+#[derive(Debug, Clone, Default)]
 struct MovementFold {
-    prev: Option<(TimeNs, f64, f64)>,
+    /// The fixes the window can still reach, oldest first: the newest fix at
+    /// least a window before the latest, and those after it, at most one a
+    /// second but the latest, so a burst of fixes can't grow it.
+    fixes: VecDeque<(TimeNs, f64, f64)>,
     moving: Option<bool>,
     stopped_since: Option<TimeNs>,
 }
 
 impl MovementFold {
-    /// Adds the next fix; a pair of fixes ending after `now_ns` doesn't count,
-    /// and without a `now_ns` none does.
+    /// Adds the next fix; a fix after `now_ns` doesn't count, and without a
+    /// `now_ns` every fix does. Fixes come in the judge's order, so a fix
+    /// earlier than the latest can't arrive; one would be skipped.
     fn observe(
         &mut self,
         fix: (TimeNs, f64, f64),
@@ -779,20 +792,37 @@ impl MovementFold {
         params: &DescribeParams,
     ) {
         let (t1, lat1, lon1) = fix;
-        if let Some((t0, lat0, lon0)) = self.prev {
-            if t1 > t0 && now_ns.is_none_or(|now| t1 <= now) {
-                #[allow(clippy::cast_precision_loss)]
-                let seconds = (t1 - t0) as f64 / 1e9;
-                let fast = distance_m(lat0, lon0, lat1, lon1) / seconds >= params.moving_mps;
-                if fast {
-                    self.stopped_since = None;
-                } else if self.stopped_since.is_none() {
-                    self.stopped_since = Some(t0);
-                }
-                self.moving = Some(fast);
-            }
+        if now_ns.is_some_and(|now| t1 > now) || self.fixes.back().is_some_and(|b| t1 < b.0) {
+            return;
         }
-        self.prev = Some(fix);
+        let len = self.fixes.len();
+        if len >= 2 && self.fixes[len - 1].0.saturating_sub(self.fixes[len - 2].0) < NS_PER_S {
+            self.fixes.pop_back();
+        }
+        self.fixes.push_back(fix);
+        while self
+            .fixes
+            .get(1)
+            .is_some_and(|f| t1.saturating_sub(f.0) >= params.moving_window_ns)
+        {
+            self.fixes.pop_front();
+        }
+        let Some(&(t0, lat0, lon0)) = self.fixes.front() else {
+            return;
+        };
+        let elapsed = t1.saturating_sub(t0);
+        if elapsed < params.moving_window_ns {
+            return;
+        }
+        #[allow(clippy::cast_precision_loss)]
+        let seconds = elapsed as f64 / 1e9;
+        let fast = distance_m(lat0, lon0, lat1, lon1) / seconds >= params.moving_mps;
+        if fast {
+            self.stopped_since = None;
+        } else if self.stopped_since.is_none() {
+            self.stopped_since = Some(t0);
+        }
+        self.moving = Some(fast);
     }
 
     fn movement(&self, now_ns: TimeNs, params: &DescribeParams) -> Movement {
@@ -819,8 +849,8 @@ pub(crate) struct DescribeFold {
 
 impl DescribeFold {
     /// Reads the next event in the judge's order. Every later answer's time
-    /// must be at or after a fix read here: a pair of fixes counts toward
-    /// movement whatever the answer's time.
+    /// must be at or after a fix read here: a fix counts toward movement
+    /// whatever the answer's time.
     pub(crate) fn observe(&mut self, event: &Event, params: &DescribeParams) {
         observe(&mut self.tracks, &mut self.movement, event, None, params);
     }
@@ -838,7 +868,7 @@ impl DescribeFold {
         params: &DescribeParams,
         vendors: &VendorTable,
     ) -> Picture {
-        let mut movement = self.movement;
+        let mut movement = self.movement.clone();
         let mut touched: BTreeMap<DeviceId, Track> = BTreeMap::new();
         for event in tail {
             if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
@@ -1024,4 +1054,27 @@ fn loud_first(a: &Description, b: &Description) -> Ordering {
             strength(b).total_cmp(&strength(a))
         })
         .then_with(|| a.device.cmp(&b.device))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DescribeParams, MovementFold, NS_PER_S};
+
+    #[test]
+    fn a_burst_of_fixes_keeps_the_movement_history_bounded() {
+        let params = DescribeParams::default();
+        let mut fold = MovementFold::default();
+        let t0 = 1_800_000_000 * NS_PER_S;
+        // Ten thousand fixes at one instant, then a thousand a millisecond
+        // apart, then a minute at 1 Hz.
+        let times = std::iter::repeat_n(t0, 10_000)
+            .chain((1..=1_000).map(|i| t0 + i * 1_000_000))
+            .chain((1..=60).map(|i| t0 + 2 * NS_PER_S + i * NS_PER_S));
+        for t in times {
+            fold.observe((t, 60.0, 10.0), None, &params);
+            // One a second across the window, its oldest and the latest.
+            assert!(fold.fixes.len() <= 13, "{} fixes held", fold.fixes.len());
+        }
+        assert_eq!(fold.moving, Some(false));
+    }
 }

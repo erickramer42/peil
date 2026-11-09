@@ -10,7 +10,7 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 
 ### Added
 
-- Tile's tracker format in the describe layer: service data under one of Tile's UUIDs names the Tile network, and the app shows it as a tracker. `DESCRIBE_VERSION` is 2.
+- Tile's tracker format in the describe layer: service data under one of Tile's UUIDs names the Tile network, and the app shows it as a tracker.
 - A Find My advert's device, from its status byte: an AirTag, another maker's Find My accessory, AirPods or another Apple device, as the category entry (`apple-find-my-airtag` and the rest); the app shows it after the network ("Find My AirTag"). AirPods are categorized `audio` and other Apple devices `apple-device`, no longer `tracker`; all stay on the Find My network.
 - Samsung's SmartTag format: service data under 0xFD5A whose first byte, masked with 0xF8, is 0x10 names the SmartThings Find network (`smartthings_find`, `samsung-smarttag`); the app shows "SmartThings SmartTag".
 - Flock Safety's equipment as the category `flock-class`, meaning consistent with it: an access point named `Flock-` and six hex digits, `Flock`, `Flock Camera net.` or `FS Ext Battery`, a Wi-Fi address in the block b4:1e:52, or BLE manufacturer data under company ID 0x09C8 (XUNTONG's, seen on the battery pack). The entry that matched says which. The app's screen-off BLE scan also keeps that company ID.
@@ -19,6 +19,7 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 
 ### Changed
 
+- Movement is measured over a 10 s window (`moving_window_ns`): moving when the newest fix at least 10 s before the latest is at least 2 m/s times the time between them away. Speed between consecutive fixes read a parked phone's GNSS jitter as moving and restarted the parked clock; driving off reads moving after about 20 m, and a stop reads moving for up to 10 s. Movement is unknown until the track spans the window. `DESCRIBE_VERSION` is 3.
 - The ring places each dot by its strongest recent signal on one scale, -40 dBm at the center to -100 at the edge, with circles at -60 and -80; the outer ring for emitters with no strength is drawn only when one is there. Most emitters on a drive are below -80 dBm, and the scale gives them more than half the ring's area.
 
 ### Fixed

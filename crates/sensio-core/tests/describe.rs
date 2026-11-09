@@ -566,6 +566,63 @@ fn the_texture_counts_the_recent_emitters_and_names_the_newest() {
     assert_eq!(newest, ["wifi:cc:cc:cc:00:00:01", "wifi:ee:ee:ee:00:00:01"]);
 }
 
+/// About 1 m of latitude, in degrees.
+const M: f64 = 1.0 / 111_195.0;
+
+/// A receiver standing still for `seconds` from `t`, a fix a second, each
+/// 3 m north or south of the spot in turn, with a 15 m jump and back every
+/// 97 s: a phone on a desk, as the saved feeds show it.
+fn parked(t: i64, seconds: i64) -> Vec<String> {
+    (0..seconds)
+        .map(|i| {
+            let jitter = if i % 2 == 0 { 3.0 } else { -3.0 };
+            let jump = if i % 97 == 50 { 15.0 } else { 0.0 };
+            fix(t + i * S, 60.0 + (jitter + jump) * M)
+        })
+        .collect()
+}
+
+#[test]
+fn a_parked_receivers_jitter_never_reads_moving() {
+    let params = DescribeParams::default();
+    let none = VendorTable::default();
+    let lines = parked(T0, 30 * 60);
+    let track = events(&lines);
+    for i in (10..track.len()).step_by(7) {
+        let now = T0 + i64::try_from(i).expect("small") * S;
+        let movement = describe(&track[..=i], now, &params, &none).movement;
+        assert_ne!(movement, Movement::Moving, "at {i} s");
+    }
+    assert_eq!(
+        describe(&track, T0 + 30 * 60 * S, &params, &none).movement,
+        Movement::Parked
+    );
+}
+
+#[test]
+fn driving_off_reads_moving_within_the_window() {
+    let params = DescribeParams::default();
+    let none = VendorTable::default();
+    let start = T0 + 600 * S;
+    let mut lines = parked(T0, 600);
+    // From a standstill at 1.5 m/s per second, a fix a second.
+    lines.extend((0..=20i32).map(|k| {
+        let seconds = f64::from(k);
+        fix(
+            start + i64::from(k) * S,
+            60.0 + 0.75 * seconds * seconds * M,
+        )
+    }));
+    let track = events(&lines);
+    let at = |s: i64| {
+        let now = start + s * S;
+        let upto: Vec<Event> = track.iter().filter(|e| e.t_ns <= now).cloned().collect();
+        describe(&upto, now, &params, &none).movement
+    };
+    assert_eq!(at(0), Movement::Parked);
+    assert_eq!(at(params.moving_window_ns / S), Movement::Moving);
+}
+
 #[test]
 fn movement_reads_moving_stopped_and_parked() {
     let params = DescribeParams::default();
