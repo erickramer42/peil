@@ -64,6 +64,14 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
         textSize = 10 * density
     }
 
+    /** Behind each label, so it reads over the dots it's drawn on. */
+    private val labelOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3 * density
+        strokeJoin = Paint.Join.ROUND
+        color = palette.bg
+    }
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val h = MeasureSpec.getSize(heightMeasureSpec)
@@ -74,7 +82,8 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val cx = width / 2f
         val cy = height / 2f
-        val r = min(cx, cy) - 8 * density
+        // Room outside the edge for the selection ring of a dot on it.
+        val r = min(cx, cy) - 17 * density
 
         val sectors = sectors(picture?.emitters.orEmpty().mapTo(HashSet()) { it.kind })
         if (sectors.size > 1) {
@@ -86,35 +95,11 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
         val rim = picture?.emitters.orEmpty().any { RingScale.onRim(it) }
         for (dbm in RingScale.GUIDES) canvas.drawCircle(cx, cy, RingScale.fraction(dbm, rim) * r, ringPaint)
         if (rim) canvas.drawCircle(cx, cy, r, unknownRingPaint)
-        for ((kind, from, span) in sectors) {
-            val a = Math.toRadians((from + span / 2).toDouble())
-            val text = KIND_LABELS[kind] ?: kind
-            val tx = cx + 0.9f * r * cos(a).toFloat() - label.measureText(text) / 2
-            val ty = cy + 0.9f * r * sin(a).toFloat()
-            canvas.drawText(text, tx, ty, label)
-        }
-        // Each circle's strength just inside its right edge, above the horizon,
-        // and the rim's "no dBm" below it when the rim is drawn. A small ring
-        // leaves out a label with no room before the circle inside it.
-        var previous = RingScale.INNER * r
-        for (dbm in RingScale.GUIDES) {
-            val edge = RingScale.fraction(dbm, rim) * r
-            val text = "$dbm"
-            if (bandLabel.measureText(text) + 8 * density <= edge - previous) {
-                canvas.drawText(text, cx + edge - bandLabel.measureText(text) - 4 * density, cy - 4 * density, bandLabel)
-            }
-            previous = edge
-        }
-        if (rim) {
-            val text = "no dBm"
-            canvas.drawText(text, cx + r - bandLabel.measureText(text) - 4 * density, cy + bandLabel.textSize + 2 * density, bandLabel)
-        }
         dot.color = palette.text
         canvas.drawCircle(cx, cy, 5 * density, dot)
 
-        val emitters = picture?.emitters ?: return
-        val drawn = ArrayList<Spot>(emitters.size)
-        for (e in emitters) {
+        val drawn = ArrayList<Spot>()
+        for (e in picture?.emitters.orEmpty()) {
             val (from, span) = sectors.firstOrNull { it.kind == e.kind }?.let { it.from to it.span } ?: continue
             // A stable angle for each device within its sector; on the rim, a
             // stable spot across it too, since there's no strength to place it by.
@@ -132,6 +117,40 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             drawn.add(Spot(e.device, x, y))
         }
         spots = drawn
+
+        // The labels last, outlined, since the weakest dots fill the outer
+        // part of the ring where they sit.
+        for ((kind, from, span) in sectors) {
+            val a = Math.toRadians((from + span / 2).toDouble())
+            val text = KIND_LABELS[kind] ?: kind
+            val tx = cx + 0.9f * r * cos(a).toFloat() - label.measureText(text) / 2
+            val ty = cy + 0.9f * r * sin(a).toFloat()
+            outlined(canvas, text, tx, ty, label)
+        }
+        // Each circle's strength just inside its right edge, above the horizon,
+        // and the rim's "no dBm" below it when the rim is drawn. Each label ends
+        // 4 dp inside its circle, so it clears the one inside it when it's
+        // narrower than the gap between their circles; a small ring leaves out
+        // the ones that aren't.
+        var previous = RingScale.INNER * r
+        for (dbm in RingScale.GUIDES) {
+            val edge = RingScale.fraction(dbm, rim) * r
+            val text = "$dbm"
+            if (bandLabel.measureText(text) + 2 * density <= edge - previous) {
+                outlined(canvas, text, cx + edge - bandLabel.measureText(text) - 4 * density, cy - 4 * density, bandLabel)
+            }
+            previous = edge
+        }
+        if (rim) {
+            val text = "no dBm"
+            outlined(canvas, text, cx + r - bandLabel.measureText(text) - 4 * density, cy + bandLabel.textSize + 2 * density, bandLabel)
+        }
+    }
+
+    private fun outlined(canvas: Canvas, text: String, x: Float, y: Float, paint: Paint) {
+        labelOutline.textSize = paint.textSize
+        canvas.drawText(text, x, y, labelOutline)
+        canvas.drawText(text, x, y, paint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
