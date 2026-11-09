@@ -14,6 +14,10 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 - A Find My advert's device, from its status byte: an AirTag, another maker's Find My accessory, AirPods or another Apple device, as the category entry (`apple-find-my-airtag` and the rest); the app shows it after the network ("Find My AirTag"). AirPods are categorized `audio` and other Apple devices `apple-device`, no longer `tracker`; all stay on the Find My network.
 - Samsung's SmartTag format: service data under 0xFD5A whose first byte, masked with 0xF8, is 0x10 names the SmartThings Find network (`smartthings_find`, `samsung-smarttag`); the app shows "SmartThings SmartTag".
 
+### Changed
+
+- The ring places each dot by its strongest recent signal on one scale, -40 dBm at the center to -100 at the edge, with circles at -60 and -80; the outer ring for emitters with no strength is drawn only when one is there. Most emitters on a drive are below -80 dBm, and the scale gives them more than half the ring's area.
+
 ### Fixed
 
 - Kismet's `Wi-Fi WDS AP` devices (an access point linking to another, which Kismet types so over `Wi-Fi AP`) are access points, and its `Wi-Fi WDS` devices (addresses carried across that link) give no event, as bridged ones don't; both were rejected lines.
