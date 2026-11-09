@@ -12,9 +12,11 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 
 - Tile's tracker format in the describe layer: service data under one of Tile's UUIDs names the Tile network, and the app shows it as a tracker. `DESCRIBE_VERSION` is 2.
 - A Find My advert's device, from its status byte: an AirTag, another maker's Find My accessory, AirPods or another Apple device, as the category entry (`apple-find-my-airtag` and the rest); the app shows it after the network ("Find My AirTag"). AirPods are categorized `audio` and other Apple devices `apple-device`, no longer `tracker`; all stay on the Find My network.
+- Samsung's SmartTag format: service data under 0xFD5A whose first byte, masked with 0xF8, is 0x10 names the SmartThings Find network (`smartthings_find`, `samsung-smarttag`); the app shows "SmartThings SmartTag".
 
 ### Fixed
 
+- Kismet's `Wi-Fi WDS AP` devices (an access point linking to another, which Kismet types so over `Wi-Fi AP`) are access points, and its `Wi-Fi WDS` devices (addresses carried across that link) give no event, as bridged ones don't; both were rejected lines.
 - The BLE scan restarts every 4 minutes, so Android's 5-minute scan timeout no longer turns it opportunistic and cuts the lines a minute.
 - The Mine list offers every recognized tracker whatever its strength, then the 40 loudest others, so a weak tag in a wallet can be marked without holding it to the phone.
 

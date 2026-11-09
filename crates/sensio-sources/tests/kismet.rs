@@ -224,13 +224,64 @@ fn a_ble_device_gives_its_manufacturer_data_and_service_uuids() {
 }
 
 #[test]
-fn bridged_devices_give_no_event_and_unknown_ones_are_rejected() {
-    let bridged = json!({
-        "kismet.device.base.macaddr": "cc:cc:cc:00:00:09",
+fn a_wds_access_point_is_an_access_point_with_or_without_a_beacon() {
+    let beaconing = json!({
+        "kismet.device.base.macaddr": "cc:cc:cc:00:00:0a",
         "kismet.device.base.phyname": "IEEE802.11",
-        "kismet.device.base.type": "Wi-Fi Bridged"
+        "kismet.device.base.type": "Wi-Fi WDS AP",
+        "kismet.device.base.frequency": 5_180_000,
+        "kismet.device.base.crypt": "WPA2",
+        "kismet.device.base.signal": signal(-72),
+        "dot11.device": {
+            "dot11.device.last_bssid": "cc:cc:cc:00:00:0a",
+            "dot11.device.last_beaconed_ssid_record": {
+                "dot11.advertisedssid.ssid": "",
+                "dot11.advertisedssid.cloaked": 1,
+                "dot11.advertisedssid.crypt_string": "WPA2-PSK"
+            }
+        }
     });
-    assert_eq!(kismet(&bridged), Ok(Vec::new()));
+    assert_eq!(
+        kismet(&beaconing).expect("the record normalizes"),
+        [EventKind::WifiAp {
+            bssid: "cc:cc:cc:00:00:0a".to_owned(),
+            ssid: None,
+            freq_mhz: Some(5180),
+            rssi_dbm: Some(-72),
+            security: Some(WifiSecurity {
+                protocol: WifiProtocol::Wpa2,
+                enterprise: false,
+            }),
+        }]
+    );
+    // A receiver Kismet only saw addressed, with no signal of its own.
+    let receiver = json!({
+        "kismet.device.base.macaddr": "cc:cc:cc:00:00:0b",
+        "kismet.device.base.phyname": "IEEE802.11",
+        "kismet.device.base.type": "Wi-Fi WDS AP"
+    });
+    assert_eq!(
+        kismet(&receiver).expect("the record normalizes"),
+        [EventKind::WifiAp {
+            bssid: "cc:cc:cc:00:00:0b".to_owned(),
+            ssid: None,
+            freq_mhz: None,
+            rssi_dbm: None,
+            security: None,
+        }]
+    );
+}
+
+#[test]
+fn bridged_and_wds_devices_give_no_event_and_unknown_ones_are_rejected() {
+    for kind in ["Wi-Fi Bridged", "Wi-Fi WDS"] {
+        let behind = json!({
+            "kismet.device.base.macaddr": "cc:cc:cc:00:00:09",
+            "kismet.device.base.phyname": "IEEE802.11",
+            "kismet.device.base.type": kind
+        });
+        assert_eq!(kismet(&behind), Ok(Vec::new()), "{kind}");
+    }
     for (phy, kind, why) in [
         ("IEEE802.11", "Wi-Fi zz", "type not handled"),
         ("zz-phy", "zz", "PHY not handled"),

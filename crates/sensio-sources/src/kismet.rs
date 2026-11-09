@@ -10,6 +10,10 @@
 //!
 //! - `IEEE802.11`, `Wi-Fi AP`: an access point, with the network it last
 //!   beaconed (its name unless cloaked, and its crypt string as security).
+//!   `Wi-Fi WDS AP` too: the transmitter or receiver of a four-address frame,
+//!   an access point linking to another, which Kismet types so over `Wi-Fi AP`
+//!   (`phy_80211.cc`, the WDS transmitter and receiver, read 2026-11-08 from
+//!   Kismet's master branch).
 //! - `Wi-Fi Client` and `Wi-Fi Device`: a station, with the access point it
 //!   was last on, if any.
 //! - `Bluetooth`, `BTLE` and `BTLE Tracker`: a BLE advert, with its
@@ -18,7 +22,9 @@
 //! - `Bluetooth`, `BR/EDR`: a Bluetooth Classic device, with its Class of
 //!   Device.
 //! - `Wi-Fi Bridged` (wired devices seen through an access point, not on the
-//!   air) gives no event.
+//!   air) gives no event, and neither does `Wi-Fi WDS` (a source or
+//!   destination address a four-address frame carries between two access
+//!   points, a wired device in the same file's words).
 //!
 //! Everything else in a record is left in the raw line: the probed network
 //! names, which the core never keeps; WPS and vendor device names, which name
@@ -185,7 +191,7 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
         .and_then(|khz| u32::try_from(khz.saturating_add(500) / 1000).ok())
         .filter(|&mhz| is_wifi_freq(mhz));
     match (device.phy.as_str(), device.kind.as_str()) {
-        ("IEEE802.11", "Wi-Fi AP") => {
+        ("IEEE802.11", "Wi-Fi AP" | "Wi-Fi WDS AP") => {
             let beaconed = device.dot11.and_then(|d| d.beaconed);
             let (ssid, crypt) = match beaconed {
                 Some(b) => (
@@ -214,7 +220,7 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
                 rssi_dbm,
             }])
         }
-        ("IEEE802.11", "Wi-Fi Bridged") => Ok(Vec::new()),
+        ("IEEE802.11", "Wi-Fi Bridged" | "Wi-Fi WDS") => Ok(Vec::new()),
         ("Bluetooth", "BR/EDR") => Ok(vec![EventKind::BtClassic {
             addr: device.mac,
             rssi_dbm,
