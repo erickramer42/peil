@@ -1,0 +1,9 @@
+The IEEE Registration Authority's public listings, read 2026-11-09, cut to registry, assignment and organization name and sorted
+by packaging/vendors.py. The lists as downloaded:
+
+MA-L: https://standards-oui.ieee.org/oui/oui.csv
+    sha256 8f3125dfad7b4946c4ce21678a2c930e09e8f280811df52d1597ac9ebb166369, 40459 assignments
+MA-M: https://standards-oui.ieee.org/oui28/mam.csv
+    sha256 710dc555fa6212f8773f2d79024c6e4ef0341142e40d9b82b82a3e137e9a13e3, 6678 assignments
+MA-S: https://standards-oui.ieee.org/oui36/oui36.csv
+    sha256 da49d8bc9b79c27c9af9a292123708f65e5bf0e4fabbdc341a99571958a57b85, 7268 assignments

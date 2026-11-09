@@ -15,6 +15,8 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 - Samsung's SmartTag format: service data under 0xFD5A whose first byte, masked with 0xF8, is 0x10 names the SmartThings Find network (`smartthings_find`, `samsung-smarttag`); the app shows "SmartThings SmartTag".
 - Flock Safety's equipment as the category `flock-class`, meaning consistent with it: an access point named `Flock-` and six hex digits, `Flock`, `Flock Camera net.` or `FS Ext Battery`, a Wi-Fi address in the block b4:1e:52, or BLE manufacturer data under company ID 0x09C8 (XUNTONG's, seen on the battery pack). The entry that matched says which. The app's screen-off BLE scan also keeps that company ID.
 
+- Vendor names with no file to supply: the core carries a snapshot of the IEEE's MA-L, MA-M and MA-S lists (read 2026-11-09), so the app shows each emitter's vendor block and `peil live` and `peil describe` name it without `--vendors`, which takes a newer list instead. `packaging/vendors.py` refreshes the snapshot and records its date and each list's SHA-256 beside it.
+
 ### Changed
 
 - The ring places each dot by its strongest recent signal on one scale, -40 dBm at the center to -100 at the edge, with circles at -60 and -80; the outer ring for emitters with no strength is drawn only when one is there. Most emitters on a drive are below -80 dBm, and the scale gives them more than half the ring's area.

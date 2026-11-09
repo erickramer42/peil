@@ -91,6 +91,46 @@ fn vendors_come_from_the_longest_block_and_randomized_addresses_have_none() {
 }
 
 #[test]
+fn the_bundled_registry_parses_and_names_a_block_from_each_list() {
+    let vendors = VendorTable::bundled().expect("the bundled snapshot parses");
+    assert!(vendors.id().is_some_and(|id| id.starts_with("fnv1a64:")));
+    // The three lists together hold tens of thousands of assignments.
+    assert!(vendors.len() > 40_000, "{} assignments", vendors.len());
+    // Blocks, not devices: built from parts, since these prefixes are real
+    // and the rest is zeros.
+    let in_block = |prefix: &str| format!("{prefix}:00:00:00");
+    assert_eq!(
+        vendors
+            .lookup(&in_block("00:00:0c"))
+            .map(|v| v.contains("Cisco")),
+        Some(true)
+    );
+    // An MA-M and an MA-S block, inside MA-L blocks held by the registry
+    // itself: the longest prefix names the organization.
+    assert_eq!(
+        vendors
+            .lookup(&in_block("00:55:da"))
+            .map(|v| v.contains("Shinko")),
+        Some(true)
+    );
+    assert_eq!(
+        vendors
+            .lookup(&in_block("00:1b:c5"))
+            .map(|v| v.contains("Converging")),
+        Some(true)
+    );
+    // The oldest MA-L blocks the IEEE lists under several names name them all.
+    assert_eq!(
+        vendors
+            .lookup(&in_block("08:00:30"))
+            .map(|v| v.contains(" / ")),
+        Some(true)
+    );
+    let empty = VendorTable::default();
+    assert!(empty.is_empty() && empty.id().is_none());
+}
+
+#[test]
 fn a_bad_registry_line_is_rejected_with_its_line() {
     let bad = "Registry,Assignment,Organization Name\nMA-L,EEEEE,Too Short\n";
     let err = VendorTable::parse(bad.as_bytes()).unwrap_err();

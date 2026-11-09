@@ -496,7 +496,8 @@ fn short_uuid(uuid: &str) -> Option<String> {
 }
 
 /// A vendor registry, from the IEEE's MA-L, MA-M and MA-S lists (ADR-0006
-/// section 5).
+/// section 5): the bundled snapshot ([`VendorTable::bundled`]) or a supplied
+/// file ([`VendorTable::parse`]).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct VendorTable {
     /// By prefix length in bits (36, 28, 24) and the prefix's value.
@@ -517,7 +518,38 @@ pub struct VendorError {
 /// The longest organization name kept.
 const MAX_ORGANIZATION: usize = 256;
 
+/// The IEEE's three public listings as of the date in
+/// `data/ieee-vendors.sources.txt`, cut to registry, assignment and
+/// organization name by `packaging/vendors.py` (ADR-0006 section 5 as
+/// amended). A block the IEEE lists under several organizations names them
+/// all, joined with " / ".
+const BUNDLED_VENDORS: &[u8] = include_bytes!("../data/ieee-vendors.csv");
+
 impl VendorTable {
+    /// The registry snapshot built into the core, so descriptions carry
+    /// vendor names without a file; `--vendors` supplies a newer or other
+    /// list instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first line of the snapshot that isn't a registry row,
+    /// which a test holds never happens.
+    pub fn bundled() -> Result<Self, VendorError> {
+        Self::parse(BUNDLED_VENDORS)
+    }
+
+    /// How many assignments the registry holds.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.by_prefix.len()
+    }
+
+    /// Whether the registry holds no assignment at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_prefix.is_empty()
+    }
+
     /// Reads the IEEE's CSV lists (`Registry,Assignment,Organization
     /// Name,Organization Address`), one or several concatenated; header lines
     /// and blank lines are skipped.

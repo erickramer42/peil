@@ -41,7 +41,7 @@ The pairing is kept (`peil/link-pairing.json` in your configuration directory), 
 
 ## The `peil` command
 
-- `peil describe <events.jsonl>`: the emitter picture over a file of normalized events, loud first. `--vendors` takes the IEEE's MA-L, MA-M and MA-S lists (CSV) for vendor names.
+- `peil describe <events.jsonl>`: the emitter picture over a file of normalized events, loud first. Vendor names come from a snapshot of the IEEE's MA-L, MA-M and MA-S lists built into the core (its date and sources in `crates/sensio-core/data/ieee-vendors.sources.txt`); `--vendors` takes a newer copy of those lists (CSV, one or several concatenated) instead, here and on `peil live`.
 - `peil judge <events.jsonl>`: one verdict per line.
 - `peil live [feed]`: reads a feed from a file or stdin and answers each `judge` line in it. A saved feed from the phone replays to the same output the app showed. Lines the app saved but couldn't pass to the core live are marked withheld; `--all` judges them too.
 

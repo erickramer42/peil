@@ -56,7 +56,7 @@ enum Command {
         #[arg(long)]
         all: bool,
         /// The IEEE's MA-L, MA-M and MA-S lists (CSV, one or several
-        /// concatenated), for vendor names.
+        /// concatenated), for vendor names [default: the snapshot built in].
         #[arg(long)]
         vendors: Option<PathBuf>,
         #[command(flatten)]
@@ -67,7 +67,8 @@ enum Command {
     Describe {
         /// The events file.
         path: PathBuf,
-        /// The IEEE's MA-L, MA-M and MA-S lists (CSV), for vendor names.
+        /// The IEEE's MA-L, MA-M and MA-S lists (CSV), for vendor names
+        /// [default: the snapshot built in].
         #[arg(long)]
         vendors: Option<PathBuf>,
     },
@@ -104,10 +105,10 @@ struct LinkArgs {
     pairing: Option<PathBuf>,
 }
 
-/// Reads the vendor registry, or none.
+/// Reads the vendor registry given, or takes the snapshot built into the core.
 fn vendor_table(path: Option<&PathBuf>) -> Result<VendorTable> {
     let Some(path) = path else {
-        return Ok(VendorTable::default());
+        return VendorTable::bundled().context("the bundled vendor registry");
     };
     let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
     let mut bytes = Vec::new();
