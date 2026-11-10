@@ -316,7 +316,10 @@ impl<N: Normalize> Live<N> {
             .collect();
         let mut route = self.route.clone();
         for event in self.pending.values() {
-            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+            if let EventKind::GnssFix {
+                lat_deg, lon_deg, ..
+            } = event.kind
+            {
                 route.observe(event.t_ns, lat_deg, lon_deg);
             }
         }
@@ -751,7 +754,10 @@ impl<N: Normalize> Live<N> {
                 break;
             }
             let event = entry.remove();
-            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+            if let EventKind::GnssFix {
+                lat_deg, lon_deg, ..
+            } = event.kind
+            {
                 self.route.observe(event.t_ns, lat_deg, lon_deg);
             }
             self.judge_fold.observe(&event, &self.rule);

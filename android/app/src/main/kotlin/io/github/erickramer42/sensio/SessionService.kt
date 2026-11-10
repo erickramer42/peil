@@ -21,6 +21,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -84,7 +88,47 @@ class SessionService : Service() {
     }
 
     private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) = startBle(filtered = intent.action == Intent.ACTION_SCREEN_OFF)
+        override fun onReceive(context: Context, intent: Intent) {
+            val off = intent.action == Intent.ACTION_SCREEN_OFF
+            startBle(filtered = off)
+            heading(on = !off)
+        }
+    }
+
+    private val rotation = FloatArray(9)
+    private val orientation = FloatArray(3)
+    private var lastHeadingNs = 0L
+
+    /** The phone's heading, at most every [HEADING_EVERY_MS], for find mode (ADR-0004 section 3). */
+    private val headingListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val now = SystemClock.elapsedRealtimeNanos()
+            if (now - lastHeadingNs < HEADING_EVERY_MS * 1_000_000L) return
+            lastHeadingNs = now
+            SensorManager.getRotationMatrixFromVector(rotation, event.values)
+            SensorManager.getOrientation(rotation, orientation)
+            // values[4] is the heading accuracy in radians, or -1 when unknown.
+            val accuracy = event.values.getOrNull(4)?.takeIf { it >= 0f }?.let { Math.toDegrees(it.toDouble()) }
+            data(
+                Feed.rotRaw(
+                    Feed.azimuth(orientation[0]),
+                    Math.toDegrees(orientation[1].toDouble()),
+                    Math.toDegrees(orientation[2].toDouble()),
+                    accuracy,
+                ),
+            )
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
+
+    /** The heading runs only while the screen is on: find mode is used looking at the ring. */
+    private fun heading(on: Boolean) {
+        val sensors = getSystemService(SensorManager::class.java) ?: return
+        sensors.unregisterListener(headingListener)
+        if (!on) return
+        val sensor = sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR) ?: return
+        sensors.registerListener(headingListener, sensor, (HEADING_EVERY_MS * 1_000L).toInt(), handler)
     }
 
     private val locationListener = object : LocationListener {
@@ -222,6 +266,7 @@ class SessionService : Service() {
             handler,
         )
         startBle(filtered = !getSystemService(PowerManager::class.java).isInteractive)
+        heading(on = getSystemService(PowerManager::class.java).isInteractive)
         handler.postDelayed(bleRenew, BLE_RENEW_MS)
         registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED), null, handler)
         registerReceiver(classicReceiver, IntentFilter(BluetoothDevice.ACTION_FOUND), null, handler)
@@ -443,6 +488,7 @@ class SessionService : Service() {
             runCatching { getSystemService(BluetoothManager::class.java).adapter?.bluetoothLeScanner?.stopScan(bleCallback) }
             runCatching { unregisterReceiver(wifiReceiver) }
             runCatching { unregisterReceiver(screenReceiver) }
+            runCatching { getSystemService(SensorManager::class.java)?.unregisterListener(headingListener) }
             runCatching { unregisterReceiver(classicReceiver) }
             runCatching { unregisterReceiver(bluetoothReceiver) }
             runCatching { getSystemService(BluetoothManager::class.java).adapter?.cancelDiscovery() }
@@ -468,6 +514,7 @@ class SessionService : Service() {
         const val JUDGE_EVERY_MS = 3_000L
         const val WIFI_EVERY_MS = 10_000L
         const val BLE_RENEW_MS = 240_000L
+        const val HEADING_EVERY_MS = 250L
         const val CLASSIC_EVERY_MS = 30_000L
         const val CLOCK_EVERY_MS = 60_000L
         const val RESTART_MAX_MS = 60_000L

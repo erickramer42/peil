@@ -298,7 +298,10 @@ pub(crate) struct JudgeFold {
 impl JudgeFold {
     /// Reads the next event in the judge's order.
     pub(crate) fn observe(&mut self, event: &Event, rule: &PersistenceRule) {
-        if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+        if let EventKind::GnssFix {
+            lat_deg, lon_deg, ..
+        } = event.kind
+        {
             self.vehicle.observe((event.t_ns, lat_deg, lon_deg), rule);
             return;
         }
@@ -323,7 +326,10 @@ impl JudgeFold {
         let mut vehicle = self.vehicle.clone();
         let mut touched: BTreeMap<DeviceId, Track> = BTreeMap::new();
         for event in tail {
-            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+            if let EventKind::GnssFix {
+                lat_deg, lon_deg, ..
+            } = event.kind
+            {
                 vehicle.observe((event.t_ns, lat_deg, lon_deg), rule);
                 continue;
             }
@@ -363,7 +369,10 @@ impl JudgeFold {
     ) -> Vec<(TimeNs, TimeNs, f64, f64)> {
         let mut vehicle = self.vehicle.clone();
         for event in tail {
-            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+            if let EventKind::GnssFix {
+                lat_deg, lon_deg, ..
+            } = event.kind
+            {
                 vehicle.observe((event.t_ns, lat_deg, lon_deg), rule);
             }
         }

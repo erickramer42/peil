@@ -103,6 +103,24 @@ pub enum EventKind {
         lat_deg: f64,
         /// Longitude, degrees east.
         lon_deg: f64,
+        /// The direction of travel, degrees clockwise from true north, when
+        /// the receiver reported one (it does only while moving).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        course_deg: Option<f64>,
+    },
+    /// Which way the receiver faces, from its orientation sensor (the
+    /// phone's rotation vector, ADR-0004 section 3). Not a sighting.
+    Heading {
+        /// Azimuth, degrees clockwise from magnetic north, 0 to under 360.
+        azimuth_deg: f64,
+        /// Pitch, degrees, -180 to 180.
+        pitch_deg: f64,
+        /// Roll, degrees, -180 to 180.
+        roll_deg: f64,
+        /// The sensor's own estimate of the azimuth's error, degrees, when it
+        /// gave one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        accuracy_deg: Option<f64>,
     },
 }
 
@@ -189,6 +207,7 @@ impl EventKind {
             Self::WifiAp { .. } => "wifi_ap",
             Self::WifiClient { .. } => "wifi_client",
             Self::GnssFix { .. } => "gnss_fix",
+            Self::Heading { .. } => "heading",
         }
     }
 
@@ -208,7 +227,7 @@ impl EventKind {
             Self::WifiAp { bssid: addr, .. } | Self::WifiClient { addr, .. } => {
                 Some(DeviceId(format!("wifi:{}", addr.to_ascii_lowercase())))
             }
-            Self::GnssFix { .. } => None,
+            Self::GnssFix { .. } | Self::Heading { .. } => None,
         }
     }
 }
@@ -425,19 +444,58 @@ impl Event {
     }
 }
 
-fn validate(event: &Event) -> Result<(), &'static str> {
-    if event.receiver.as_deref().is_some_and(|r| !is_label(r)) {
-        return Err("receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'");
-    }
-    match &event.kind {
-        EventKind::GnssFix { lat_deg, lon_deg } => {
+/// The ranges of a GNSS fix and a heading: degrees, finite, each in its own range.
+fn validate_position(kind: &EventKind) -> Result<(), &'static str> {
+    match kind {
+        EventKind::GnssFix {
+            lat_deg,
+            lon_deg,
+            course_deg,
+        } => {
             if !lat_deg.is_finite() || !(-90.0..=90.0).contains(lat_deg) {
                 return Err("latitude out of range");
             }
             if !lon_deg.is_finite() || !(-180.0..=180.0).contains(lon_deg) {
                 return Err("longitude out of range");
             }
+            if course_deg.is_some_and(|c| !c.is_finite() || !(0.0..360.0).contains(&c)) {
+                return Err("course out of range: 0 to under 360 degrees");
+            }
         }
+        EventKind::Heading {
+            azimuth_deg,
+            pitch_deg,
+            roll_deg,
+            accuracy_deg,
+        } => {
+            if !azimuth_deg.is_finite() || !(0.0..360.0).contains(azimuth_deg) {
+                return Err("azimuth out of range: 0 to under 360 degrees");
+            }
+            if !pitch_deg.is_finite() || !(-180.0..=180.0).contains(pitch_deg) {
+                return Err("pitch out of range: -180 to 180 degrees");
+            }
+            if !roll_deg.is_finite() || !(-180.0..=180.0).contains(roll_deg) {
+                return Err("roll out of range: -180 to 180 degrees");
+            }
+            if accuracy_deg.is_some_and(|a| !a.is_finite() || !(0.0..=180.0).contains(&a)) {
+                return Err("heading accuracy out of range: 0 to 180 degrees");
+            }
+        }
+        EventKind::BleAdvert { .. }
+        | EventKind::BtClassic { .. }
+        | EventKind::Tpms { .. }
+        | EventKind::WifiAp { .. }
+        | EventKind::WifiClient { .. } => {}
+    }
+    Ok(())
+}
+
+fn validate(event: &Event) -> Result<(), &'static str> {
+    if event.receiver.as_deref().is_some_and(|r| !is_label(r)) {
+        return Err("receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'");
+    }
+    match &event.kind {
+        EventKind::GnssFix { .. } | EventKind::Heading { .. } => validate_position(&event.kind)?,
         EventKind::BleAdvert {
             addr,
             rssi_dbm,

@@ -97,6 +97,30 @@ object Feed {
         append('}')
     }
 
+    /** Degrees to two decimals. */
+    private fun degrees(v: Double): Double = Math.round(v * 100.0) / 100.0
+
+    /** `getOrientation`'s azimuth (radians, -pi to pi) as degrees from 0 to under 360. */
+    fun azimuth(radians: Float): Double {
+        val d = degrees(Math.toDegrees(radians.toDouble()))
+        val wrapped = ((d % 360.0) + 360.0) % 360.0
+        return if (wrapped >= 360.0) 0.0 else degrees(wrapped).let { if (it >= 360.0) 0.0 else it }
+    }
+
+    /**
+     * The phone's orientation from the rotation-vector sensor: azimuth from
+     * magnetic north, pitch and roll in degrees, and the sensor's own heading
+     * accuracy estimate when it gave one (the `android` source's `rot`).
+     */
+    fun rotRaw(azimuthDeg: Double, pitchDeg: Double, rollDeg: Double, accuracyDeg: Double?): String =
+        buildString {
+            append("""{"t":"rot","az":""").append(azimuthDeg)
+            append(""","pitch":""").append(degrees(pitchDeg.coerceIn(-180.0, 180.0)))
+            append(""","roll":""").append(degrees(rollDeg.coerceIn(-180.0, 180.0)))
+            accuracyDeg?.let { append(""","acc":""").append(degrees(it.coerceIn(0.0, 180.0))) }
+            append('}')
+        }
+
     /** One location fix; the fields after `lon` stay in the raw line. */
     fun locRaw(lat: Double, lon: Double, provider: String?, accuracyM: Float?, speedMps: Float?, bearingDeg: Float?): String =
         buildString {

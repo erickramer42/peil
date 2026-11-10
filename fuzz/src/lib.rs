@@ -193,8 +193,10 @@ impl Security {
 /// An event kind, mostly well formed.
 #[derive(Arbitrary, Debug, Clone)]
 pub enum Kind {
-    /// A GNSS fix.
-    Fix(Coord),
+    /// A GNSS fix, with a course or none.
+    Fix(Coord, Option<f64>),
+    /// The receiver's heading: azimuth, pitch, roll and accuracy, any values.
+    Heading(f64, f64, f64, Option<f64>),
     /// A BLE advert.
     Ble(Addr, Option<i16>, Advert),
     /// A TPMS transmission; the ID is one of a few, or any text.
@@ -218,10 +220,20 @@ impl Kind {
     #[must_use]
     pub fn event_kind(&self) -> EventKind {
         match self {
-            Self::Fix(coord) => {
+            Self::Fix(coord, course_deg) => {
                 let (lat_deg, lon_deg) = coord.lat_lon();
-                EventKind::GnssFix { lat_deg, lon_deg }
+                EventKind::GnssFix {
+                    lat_deg,
+                    lon_deg,
+                    course_deg: *course_deg,
+                }
             }
+            Self::Heading(azimuth_deg, pitch_deg, roll_deg, accuracy_deg) => EventKind::Heading {
+                azimuth_deg: *azimuth_deg,
+                pitch_deg: *pitch_deg,
+                roll_deg: *roll_deg,
+                accuracy_deg: *accuracy_deg,
+            },
             Self::Ble(addr, rssi_dbm, advert) => {
                 let (manufacturer_data, service_data, service_uuids) = advert.parts();
                 EventKind::BleAdvert {

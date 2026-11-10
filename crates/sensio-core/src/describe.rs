@@ -762,7 +762,7 @@ fn sighting(kind: &EventKind) -> Option<(EmitterKind, Option<f32>, Option<&Strin
             Some((EmitterKind::BtClassic, rssi_dbm.map(f32::from), Some(addr)))
         }
         EventKind::Tpms { rssi_dbm, .. } => Some((EmitterKind::Tpms, *rssi_dbm, None)),
-        EventKind::GnssFix { .. } => None,
+        EventKind::GnssFix { .. } | EventKind::Heading { .. } => None,
     }
 }
 
@@ -932,7 +932,10 @@ impl DescribeFold {
         let mut movement = self.movement.clone();
         let mut touched: BTreeMap<DeviceId, Track> = BTreeMap::new();
         for event in tail {
-            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+            if let EventKind::GnssFix {
+                lat_deg, lon_deg, ..
+            } = event.kind
+            {
                 movement.observe((event.t_ns, lat_deg, lon_deg), Some(now_ns), params);
                 continue;
             }
@@ -1010,7 +1013,10 @@ fn observe(
     now_ns: Option<TimeNs>,
     params: &DescribeParams,
 ) {
-    if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+    if let EventKind::GnssFix {
+        lat_deg, lon_deg, ..
+    } = event.kind
+    {
         movement.observe((event.t_ns, lat_deg, lon_deg), now_ns, params);
         return;
     }

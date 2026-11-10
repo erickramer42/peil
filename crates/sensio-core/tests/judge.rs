@@ -495,3 +495,48 @@ fn a_classic_device_parses_and_bad_ones_are_rejected() {
         );
     }
 }
+
+#[test]
+fn a_course_and_a_heading_out_of_range_are_rejected_with_their_line() {
+    let fix = |course: &str| {
+        format!(
+            r#"{{"t_ns":1,"source":"android","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0,"course_deg":{course}}}"#
+        )
+    };
+    assert!(accepted(&fix("0.0")) && accepted(&fix("359.9")));
+    for course in ["360.0", "-1.0"] {
+        assert_eq!(
+            rejection(&fix(course)),
+            "line 1: course out of range: 0 to under 360 degrees",
+            "{course}"
+        );
+    }
+    let heading =
+        |fields: &str| format!(r#"{{"t_ns":1,"source":"android","kind":"heading",{fields}}}"#);
+    assert!(accepted(&heading(
+        r#""azimuth_deg":359.5,"pitch_deg":-90.0,"roll_deg":180.0,"accuracy_deg":12.0"#
+    )));
+    assert!(accepted(&heading(
+        r#""azimuth_deg":0.0,"pitch_deg":0.0,"roll_deg":0.0"#
+    )));
+    for (fields, reason) in [
+        (
+            r#""azimuth_deg":360.0,"pitch_deg":0.0,"roll_deg":0.0"#,
+            "azimuth out of range: 0 to under 360 degrees",
+        ),
+        (
+            r#""azimuth_deg":10.0,"pitch_deg":181.0,"roll_deg":0.0"#,
+            "pitch out of range: -180 to 180 degrees",
+        ),
+        (
+            r#""azimuth_deg":10.0,"pitch_deg":0.0,"roll_deg":-181.0"#,
+            "roll out of range: -180 to 180 degrees",
+        ),
+        (
+            r#""azimuth_deg":10.0,"pitch_deg":0.0,"roll_deg":0.0,"accuracy_deg":-1.0"#,
+            "heading accuracy out of range: 0 to 180 degrees",
+        ),
+    ] {
+        assert_eq!(rejection(&heading(fields)), format!("line 1: {reason}"));
+    }
+}

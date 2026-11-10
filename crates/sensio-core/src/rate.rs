@@ -34,7 +34,7 @@ pub(crate) fn radio_of(kind: &EventKind) -> Option<&'static str> {
         EventKind::BtClassic { .. } => Some("bt_classic"),
         EventKind::WifiAp { .. } | EventKind::WifiClient { .. } => Some("wifi"),
         EventKind::GnssFix { .. } => Some("gnss"),
-        EventKind::Tpms { .. } => None,
+        EventKind::Tpms { .. } | EventKind::Heading { .. } => None,
     }
 }
 

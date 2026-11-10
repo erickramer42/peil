@@ -32,6 +32,24 @@ class FeedTest {
     }
 
     @Test
+    fun aRotationReadingIsOneLineInDegrees() {
+        assertEquals(
+            """{"t":"rot","az":271.5,"pitch":-12.0,"roll":3.25,"acc":11.0}""",
+            Feed.rotRaw(271.5, -12.0, 3.25, 11.0),
+        )
+        assertEquals("""{"t":"rot","az":0.0,"pitch":180.0,"roll":0.0}""", Feed.rotRaw(0.0, 200.0, 0.0, null))
+    }
+
+    @Test
+    fun anAzimuthWrapsToUnder360() {
+        assertEquals(0.0, Feed.azimuth(0f), 0.0)
+        assertEquals(270.0, Feed.azimuth((-Math.PI / 2).toFloat()), 0.01)
+        assertEquals(90.0, Feed.azimuth((Math.PI / 2).toFloat()), 0.01)
+        // Just under a full turn rounds to 360.00, which reads as 0.
+        assertEquals(0.0, Feed.azimuth((-0.00001).toFloat()), 0.0)
+    }
+
+    @Test
     fun aWithheldLineSaysSo() {
         assertEquals(
             """{"type":"line","seq":1,"boot_ns":2,"source":"android","receiver":"phone","raw":"x","withheld":true}""",

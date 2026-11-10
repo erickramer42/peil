@@ -133,6 +133,17 @@ fn a_location_is_a_gnss_fix_and_an_unknown_type_is_rejected() {
         [EventKind::GnssFix {
             lat_deg: 60.01,
             lon_deg: 10.02,
+            course_deg: None,
+        }]
+    );
+    // The bearing Android gives while moving is the fix's course.
+    assert_eq!(
+        android(r#"{"t":"loc","lat":60.01,"lon":10.02,"speed":12.5,"bearing":249.6}"#)
+            .expect("the line normalizes"),
+        [EventKind::GnssFix {
+            lat_deg: 60.01,
+            lon_deg: 10.02,
+            course_deg: Some(249.6),
         }]
     );
     let reason = android(r#"{"t":"zz:zz:zz:00:00:09"}"#).expect_err("unknown type");
@@ -150,6 +161,29 @@ fn a_classic_device_found_by_discovery_gives_its_class() {
             addr: "EE:EE:EE:00:00:01".to_owned(),
             rssi_dbm: Some(-66),
             device_class: Some(2_098_180),
+        }]
+    );
+}
+
+#[test]
+fn a_rotation_reading_is_a_heading() {
+    assert_eq!(
+        android(r#"{"t":"rot","az":271.5,"pitch":-12.0,"roll":3.25,"acc":11.0}"#)
+            .expect("the line normalizes"),
+        [EventKind::Heading {
+            azimuth_deg: 271.5,
+            pitch_deg: -12.0,
+            roll_deg: 3.25,
+            accuracy_deg: Some(11.0),
+        }]
+    );
+    assert_eq!(
+        android(r#"{"t":"rot","az":0.0,"pitch":0.0,"roll":0.0}"#).expect("no accuracy given"),
+        [EventKind::Heading {
+            azimuth_deg: 0.0,
+            pitch_deg: 0.0,
+            roll_deg: 0.0,
+            accuracy_deg: None,
         }]
     );
 }

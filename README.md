@@ -85,15 +85,16 @@ Golden verdicts are [insta](https://insta.rs) snapshots. After a deliberate rule
 One JSON object per line ([ADR-0002](docs/adr/0002-recordings-and-session-clock.md)): `t_ns` on the session clock, the `source` program, and the `receiver` that saw it, so a phone and a laptop in the same car are told apart.
 
 ```json
-{"t_ns":1800000000000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}
+{"t_ns":1800000000000000000,"source":"gpsd","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0,"course_deg":90.0}
 {"t_ns":1800000001000000000,"source":"kismet","receiver":"laptop","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-58}
 {"t_ns":1800000002000000000,"source":"android","receiver":"phone","kind":"wifi_ap","bssid":"cc:cc:cc:00:00:01","ssid":"example-hotspot","freq_mhz":2437,"rssi_dbm":-61}
 {"t_ns":1800000003000000000,"source":"kismet","receiver":"laptop","kind":"wifi_client","addr":"dd:dd:dd:00:00:01","bssid":"cc:cc:cc:00:00:01","freq_mhz":5180,"rssi_dbm":-70}
 {"t_ns":1800000004000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-12.5}
 {"t_ns":1800000005000000000,"source":"kismet","receiver":"laptop","kind":"bt_classic","addr":"ee:ee:ee:00:00:01","rssi_dbm":-66,"device_class":2098180}
+{"t_ns":1800000006000000000,"source":"android","receiver":"phone","kind":"heading","azimuth_deg":271.5,"pitch_deg":-12.0,"roll_deg":3.25,"accuracy_deg":11.0}
 ```
 
-A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for; a device's name is never kept, since it's often a person's. A rejected line is reported by line, column and reason, never by its value.
+A fix's `course_deg` is its direction of travel, when the receiver gave one; a `heading` is which way the receiver faces, from its orientation sensor, and is never a sighting. A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for; a device's name is never kept, since it's often a person's. A rejected line is reported by line, column and reason, never by its value.
 
 ## Live feed
 

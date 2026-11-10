@@ -17,8 +17,14 @@
 //! - `bt`: one Bluetooth Classic device found by discovery, which the user
 //!   turns on (it transmits inquiries): `addr`, `rssi` and `class`, the
 //!   `BluetoothClass` it announced. Its name stays in the raw line only.
-//! - `loc`: one location fix: `lat`, `lon` in degrees. Other fields the app
-//!   writes (`provider`, `acc`, `speed`) stay in the raw line.
+//! - `loc`: one location fix: `lat`, `lon` in degrees, and `bearing`, the
+//!   direction of travel (`Location.getBearing`) when Android reported one.
+//!   Other fields the app writes (`provider`, `acc`, `speed`) stay in the raw
+//!   line.
+//! - `rot`: the phone's orientation from the rotation-vector sensor
+//!   (`SensorManager.getOrientation`): `az` (azimuth from magnetic north),
+//!   `pitch` and `roll` in degrees, and `acc`, the sensor's heading accuracy
+//!   estimate in degrees, when it gave one.
 //!
 //! Any field may be absent where Android didn't report it; a line of another
 //! type is rejected. Times come from the feed line's arrival, never from the
@@ -60,6 +66,13 @@ enum Line {
     Loc {
         lat: f64,
         lon: f64,
+        bearing: Option<f64>,
+    },
+    Rot {
+        az: f64,
+        pitch: f64,
+        roll: f64,
+        acc: Option<f64>,
     },
 }
 
@@ -99,9 +112,21 @@ pub fn normalize(raw: &str) -> Result<Vec<EventKind>, String> {
             rssi_dbm: wifi::dbm(rssi),
             device_class: class.filter(|&c| c <= 0x00ff_ffff),
         }]),
-        Line::Loc { lat, lon } => Ok(vec![EventKind::GnssFix {
+        Line::Loc { lat, lon, bearing } => Ok(vec![EventKind::GnssFix {
             lat_deg: lat,
             lon_deg: lon,
+            course_deg: bearing,
+        }]),
+        Line::Rot {
+            az,
+            pitch,
+            roll,
+            acc,
+        } => Ok(vec![EventKind::Heading {
+            azimuth_deg: az,
+            pitch_deg: pitch,
+            roll_deg: roll,
+            accuracy_deg: acc,
         }]),
     }
 }
