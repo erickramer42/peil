@@ -5,16 +5,17 @@
 //! The feed (`fixtures/drive.feed`) is the synthetic drive of `drive.jsonl`
 //! carried as `sensio` lines, with a `judge` line after each place from the
 //! second on. The BLE device's sighting at the fourth place is withheld
-//! (the core fell behind), the phone sleeps before the last sighting, and a
-//! clock reading from the system clock follows.
+//! (the core fell behind), the phone sleeps before the last sighting, a
+//! clock reading from the system clock follows, and the feed's `end` line
+//! says the session was stopped.
 
 use std::io::{BufRead, BufReader, Cursor};
 
 use proptest::prelude::*;
 use sensio_core::event::reason_without_values;
 use sensio_core::feed::{
-    BoundedLine, Coverage, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, RadioState, VERDICTS_SCHEMA,
-    VerdictLine, read_bounded_line,
+    BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, RadioState,
+    VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
 };
 use sensio_core::{
     DescribeParams, Event, EventKind, Fatal, LATENESS_NS, Live, Normalize, PersistenceRule,
@@ -909,4 +910,62 @@ fn a_ble_scan_that_falls_to_a_few_results_reads_low_while_on() {
     assert_eq!(last_minute, Some((14, 5)));
     assert!(low);
     assert!((100 * s..=180 * s).contains(&low_ns), "{low_ns}");
+}
+
+fn end_reason(lines: &[VerdictLine]) -> Option<EndReason> {
+    match lines.last() {
+        Some(VerdictLine::End { reason, .. }) => Some(*reason),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_feed_with_its_end_line_was_stopped_and_one_without_was_cut() {
+    assert_eq!(end_reason(&live(FEED, false)), Some(EndReason::Stopped));
+    let cut: String = FEED
+        .lines()
+        .filter(|l| !l.contains(r#""type":"end""#))
+        .flat_map(|l| {
+            [
+                l, "
+",
+            ]
+        })
+        .collect();
+    assert_eq!(end_reason(&live(&cut, false)), Some(EndReason::Cut));
+    // A feed with no line but its start was cut too.
+    assert_eq!(end_reason(&live(&feed(&[]), false)), Some(EndReason::Cut));
+}
+
+#[test]
+fn a_line_after_the_feeds_end_is_rejected_and_the_end_bounds_coverage() {
+    let s = 1_000_000_000_i64;
+    let lines = live(
+        &feed(&[
+            line(1, 5 * s, None, BLE),
+            r#"{"type":"end","boot_ns":10000000000}"#.to_owned(),
+            line(2, 20 * s, None, BLE),
+            r#"{"type":"end","boot_ns":30000000000}"#.to_owned(),
+        ]),
+        false,
+    );
+    let rejected: Vec<_> = rejections(&lines).iter().map(|r| (r.0, r.2)).collect();
+    assert_eq!(
+        rejected,
+        [
+            (5, "a line after the feed's end"),
+            (6, "a line after the feed's end")
+        ]
+    );
+    assert_eq!(end_reason(&lines), Some(EndReason::Stopped));
+    let last = coverages(&lines).pop().expect("a final coverage");
+    assert_eq!(last.boot_ns, Some(10 * s));
+    assert_eq!(last.sources[0].events, 1);
+}
+
+#[test]
+fn an_end_time_out_of_range_is_rejected_and_the_feed_still_reads_cut() {
+    let lines = live(&feed(&[r#"{"type":"end","boot_ns":-1}"#.to_owned()]), false);
+    assert_eq!(rejections(&lines), [(3, None, "end time out of range")]);
+    assert_eq!(end_reason(&lines), Some(EndReason::Cut));
 }

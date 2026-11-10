@@ -480,7 +480,7 @@ expression: "lines[1..]"
   },
   {
     "type": "coverage",
-    "boot_ns": 1703000000000,
+    "boot_ns": 1704000000000,
     "sources": [
       {
         "source": "sensio",
@@ -512,8 +512,8 @@ expression: "lines[1..]"
   },
   {
     "type": "end",
-    "reason": "input_closed",
-    "feed_lines": 36,
+    "reason": "stopped",
+    "feed_lines": 37,
     "judged": 3,
     "events": 27
   }

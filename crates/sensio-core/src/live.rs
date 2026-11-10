@@ -132,6 +132,8 @@ pub struct Live<N> {
     feed_rejected: u64,
     torn: u64,
     slept_ns: TimeNs,
+    /// Whether the feed's `end` line came.
+    ended: bool,
 }
 
 impl<N: Normalize> Live<N> {
@@ -164,6 +166,7 @@ impl<N: Normalize> Live<N> {
             feed_rejected: 0,
             torn: 0,
             slept_ns: 0,
+            ended: false,
         }
     }
 
@@ -270,7 +273,11 @@ impl<N: Normalize> Live<N> {
         Ok(vec![
             VerdictLine::Coverage(self.coverage(self.latest_boot_ns)),
             VerdictLine::End {
-                reason: EndReason::InputClosed,
+                reason: if self.ended {
+                    EndReason::Stopped
+                } else {
+                    EndReason::Cut
+                },
                 feed_lines: self.feed_lines,
                 judged: self.judged,
                 events: self.events,
@@ -281,8 +288,19 @@ impl<N: Normalize> Live<N> {
     fn apply(&mut self, feed_line: usize, line: FeedLine) -> Vec<VerdictLine> {
         let reject =
             |this: &mut Self, reason: &str| this.reject_feed_line(feed_line, reason.to_owned());
+        if self.ended {
+            return reject(self, "a line after the feed's end");
+        }
         match line {
             FeedLine::Start { .. } => reject(self, "a second start line"),
+            FeedLine::End { boot_ns } => {
+                if boot_ns < 0 {
+                    return reject(self, "end time out of range");
+                }
+                self.saw(boot_ns);
+                self.ended = true;
+                Vec::new()
+            }
             FeedLine::Clock {
                 boot_ns, utc_ns, ..
             } => {

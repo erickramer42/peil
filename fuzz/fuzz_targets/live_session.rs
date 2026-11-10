@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sensio_core::event::is_label;
-use sensio_core::feed::{ClockBasis, FEED_SCHEMA, FeedLine, RadioState, VerdictLine};
+use sensio_core::feed::{ClockBasis, EndReason, FEED_SCHEMA, FeedLine, RadioState, VerdictLine};
 use sensio_core::{Event, EventKind, Live, TimeNs, Verdict, judge, run};
 use sensio_fuzz::{Kind, Rule, Time};
 use sensio_sources::Sources;
@@ -64,6 +64,7 @@ enum Op {
     Judge(Time),
     Dropped(Option<u8>, u64),
     Slept(Time, i64),
+    End(Time),
     Radio(Time, u8, Option<u8>, u8),
     /// Never a feed line: it starts with '#'.
     Garbage(Vec<u8>),
@@ -78,7 +79,7 @@ struct Session {
     torn_tail: Option<Vec<u8>>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Model {
     clock: Option<(TimeNs, TimeNs)>,
     offsets: BTreeMap<String, TimeNs>,
@@ -88,6 +89,9 @@ struct Model {
     answers: Vec<Vec<Verdict>>,
     /// Each radio's state and when it entered it.
     radios: BTreeMap<(String, Option<String>), (RadioState, TimeNs)>,
+    /// Whether a valid `end` line was written: every line after it is
+    /// rejected and changes nothing else.
+    ended: bool,
 }
 
 impl Model {
@@ -127,6 +131,11 @@ fuzz_target!(|session: Session| {
     feed.push(b'\n');
 
     for op in session.ops.iter().take(MAX_OPS) {
+        // After the end, an op runs against a copy, so it changes nothing;
+        // the core rejects its line instead (a blank line stays skipped).
+        let ended = model.ended;
+        let mut scratch = model.clone();
+        let m = if ended { &mut scratch } else { &mut model };
         let line = match op {
             Op::Clock(boot, utc) => {
                 let boot_ns = boot.at(&mut cursor);
@@ -135,9 +144,9 @@ fuzz_target!(|session: Session| {
                     Utc::Raw(t) => *t,
                 };
                 if boot_ns < 0 || utc_ns < 0 {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 } else {
-                    model.clock = Some((boot_ns, utc_ns));
+                    m.clock = Some((boot_ns, utc_ns));
                 }
                 json(&FeedLine::Clock {
                     boot_ns,
@@ -149,9 +158,9 @@ fuzz_target!(|session: Session| {
                 let receiver = receiver(*r);
                 let offset_ns = offset.unwrap_or(-5_000_000_000);
                 if !is_label(&receiver) || *uncertainty_ns < 0 {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 } else {
-                    model.offsets.insert(receiver.clone(), offset_ns);
+                    m.offsets.insert(receiver.clone(), offset_ns);
                 }
                 json(&FeedLine::Offset {
                     receiver,
@@ -168,7 +177,7 @@ fuzz_target!(|session: Session| {
                 withheld,
             } => {
                 let seq = match seq {
-                    Seq::Next(n) => model
+                    Seq::Next(n) => m
                         .last_seq
                         .map_or(0, |last| last.saturating_add(1 + u64::from(*n))),
                     Seq::Raw(s) => *s,
@@ -190,14 +199,14 @@ fuzz_target!(|session: Session| {
                     withheld: *withheld,
                 });
                 if receiver.as_deref().is_some_and(|r| !is_label(r))
-                    || model.last_seq.is_some_and(|last| seq <= last)
+                    || m.last_seq.is_some_and(|last| seq <= last)
                 {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 } else {
-                    model.last_seq = Some(seq);
+                    m.last_seq = Some(seq);
                     if !*withheld || session.all {
                         let t_ns = (boot_ns >= 0 && remote_ns.is_none_or(|t| t >= 0))
-                            .then(|| model.utc(boot_ns, remote_ns, receiver.as_deref()))
+                            .then(|| m.utc(boot_ns, remote_ns, receiver.as_deref()))
                             .flatten();
                         // The normalizer's own parse: a non-finite float was written as null.
                         let parsed: Option<EventKind> = serde_json::from_str(&raw).ok();
@@ -208,8 +217,8 @@ fuzz_target!(|session: Session| {
                             kind,
                         });
                         match event.filter(|e| e.validate().is_ok()) {
-                            Some(event) => model.events.push(event),
-                            None => model.rejected += 1,
+                            Some(event) => m.events.push(event),
+                            None => m.rejected += 1,
                         }
                     }
                 }
@@ -218,16 +227,16 @@ fuzz_target!(|session: Session| {
             Op::Judge(boot) => {
                 let boot_ns = boot.at(&mut cursor);
                 if boot_ns < 0 {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 } else {
-                    model.answers.push(judge(&model.events, &rule));
+                    m.answers.push(judge(&m.events, &rule));
                 }
                 json(&FeedLine::Judge { boot_ns })
             }
             Op::Dropped(r, lines) => {
                 let receiver = r.map(receiver);
                 if receiver.as_deref().is_some_and(|r| !is_label(r)) {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 }
                 json(&FeedLine::Dropped {
                     source: "sensio".to_owned(),
@@ -238,7 +247,7 @@ fuzz_target!(|session: Session| {
             Op::Slept(boot, slept_ns) => {
                 let boot_ns = boot.at(&mut cursor);
                 if boot_ns < 0 || *slept_ns < 0 {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 }
                 json(&FeedLine::Slept {
                     boot_ns,
@@ -252,11 +261,11 @@ fuzz_target!(|session: Session| {
                 let state = STATES[usize::from(*state) % STATES.len()];
                 let key = (radio.clone(), receiver.clone());
                 let named = is_label(&radio) && receiver.as_deref().is_none_or(is_label);
-                let back = model.radios.get(&key).is_some_and(|&(_, since)| boot_ns < since);
+                let back = m.radios.get(&key).is_some_and(|&(_, since)| boot_ns < since);
                 if !named || boot_ns < 0 || back {
-                    model.rejected += 1;
+                    m.rejected += 1;
                 } else {
-                    model.radios.insert(key, (state, boot_ns));
+                    m.radios.insert(key, (state, boot_ns));
                 }
                 json(&FeedLine::Radio {
                     boot_ns,
@@ -266,13 +275,25 @@ fuzz_target!(|session: Session| {
                 })
             }
             Op::Garbage(bytes) => {
-                model.rejected += 1;
+                m.rejected += 1;
                 let mut line = vec![b'#'];
                 line.extend(bytes.iter().filter(|&&b| b != b'\n'));
                 line
             }
+            Op::End(boot) => {
+                let boot_ns = boot.at(&mut cursor);
+                if boot_ns < 0 {
+                    m.rejected += 1;
+                } else {
+                    m.ended = true;
+                }
+                json(&FeedLine::End { boot_ns })
+            }
             Op::Blank(n) => [b"".as_slice(), b" ", b"\r", b"\t "][usize::from(n % 4)].to_vec(),
         };
+        if ended && !matches!(op, Op::Blank(_)) {
+            model.rejected += 1;
+        }
         feed.extend_from_slice(&line);
         feed.push(b'\n');
     }
@@ -326,10 +347,16 @@ fuzz_target!(|session: Session| {
         rejected, model.rejected,
         "rejections differ from the model's"
     );
-    let Some(VerdictLine::End { events, .. }) = lines.last() else {
+    let Some(VerdictLine::End { events, reason, .. }) = lines.last() else {
         panic!("no end line");
     };
     assert_eq!(*events, model.events.len());
+    let expected = if model.ended {
+        EndReason::Stopped
+    } else {
+        EndReason::Cut
+    };
+    assert_eq!(*reason, expected, "the end reason isn't the model's");
     let Some(VerdictLine::Coverage(coverage)) = lines.iter().rev().nth(1) else {
         panic!("no final coverage");
     };

@@ -17,6 +17,11 @@ class FeedTest {
     }
 
     @Test
+    fun aStoppedSessionEndsWithItsEndLine() {
+        assertEquals("""{"type":"end","boot_ns":42}""", Feed.end(42))
+    }
+
+    @Test
     fun aWithheldLineSaysSo() {
         assertEquals(
             """{"type":"line","seq":1,"boot_ns":2,"source":"android","receiver":"phone","raw":"x","withheld":true}""",

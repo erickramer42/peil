@@ -34,3 +34,4 @@
 {"type":"clock","boot_ns":1701000000000,"utc_ns":1800001699000000000,"basis":"system"}
 {"type":"line","seq":28,"boot_ns":1702000000000,"source":"sensio","raw":"{\"kind\":\"ble_advert\",\"addr\":\"dd:dd:dd:00:00:04\",\"rssi_dbm\":-77}"}
 {"type":"judge","boot_ns":1703000000000}
+{"type":"end","boot_ns":1704000000000}

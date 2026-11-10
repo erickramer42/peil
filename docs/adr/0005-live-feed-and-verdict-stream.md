@@ -1,6 +1,6 @@
 # ADR-0005: The live feed and the verdict stream
 
-Status: Accepted. Built: the feed and verdict-stream formats with the `radio` line and per-radio coverage (with each radio's last-minute rate and BLE's low rate), `peil live`, the `sensio`, `android` and `kismet` normalizers, and the incremental judge with its lateness window. Not yet built: an `end` for an interrupted stream.
+Status: Accepted. Built: the feed and verdict-stream formats with the `radio` line and per-radio coverage (with each radio's last-minute rate and BLE's low rate), `peil live`, the `sensio`, `android` and `kismet` normalizers, the incremental judge with its lateness window, and the feed's `end` line with a stream that ends `stopped` or `cut`.
 
 ## Context
 
@@ -39,6 +39,8 @@ ADR-0004 runs the core as a process inside the Android app, fed raw lines over s
 
      Amended 2026-11-09: a radio that gives events (`ble`, `wifi`, `gnss`, `bt_classic`) also carries its results over the last minute of arrivals and the devices they named (`last_minute`), and BLE a `low_rate` flag with its time low (`low_ns`). Android can make a running BLE scan opportunistic after a timeout of its own (5 minutes on the test phone, 30 in AOSP) without telling the app, so the radio still reads `on` while its results fall to what other apps' scans bring. A full scan hears each device tens of times a minute, so `low_rate` is a minute the radio read `on` throughout with under 100 results and under 30 a device, or none: a scan short of full, or a place with nothing to hear. The core counts it from the lines' arrival in whole seconds, so a replay counts as live did.
    - `end`, the last line: why the stream ended (input closed, interrupted) and the totals.
+
+     Amended 2026-11-09: the feed gains an `end` line with its `boot_ns`, which the app writes last when the user stops a session. A killed app, a phone that died or a cut file leaves a feed without one, so the stream's `end` says `stopped` when the feed's `end` line came and `cut` when the input closed without one; every feed saved before the line existed replays as `cut`. A line after the feed's `end` is rejected, and the final coverage covers up to it.
 
    Amended 2026-11-07: an `emitters` line, the emitter picture at that moment (ADR-0006), comes before each `verdicts` line. Readers skip line types they don't know, so a new line type is an additive change.
 

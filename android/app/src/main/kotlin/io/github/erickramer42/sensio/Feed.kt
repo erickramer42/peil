@@ -46,6 +46,9 @@ object Feed {
 
     fun slept(bootNs: Long, sleptNs: Long) = """{"type":"slept","boot_ns":$bootNs,"slept_ns":$sleptNs}"""
 
+    /** The session was stopped: written last, so a feed without one was cut (ADR-0005). */
+    fun end(bootNs: Long) = """{"type":"end","boot_ns":$bootNs}"""
+
     /** A radio's states, as the core's `RadioState` names them. */
     enum class RadioState(val wire: String) { ON("on"), FILTERED("filtered"), OFF("off"), FAILED("failed"), UNUSED("unused") }
 

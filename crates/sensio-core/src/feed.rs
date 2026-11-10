@@ -104,6 +104,13 @@ pub enum FeedLine {
         /// How many.
         lines: u64,
     },
+    /// The session was stopped: the app writes it last, so a feed without
+    /// one was cut, by a killed app, a dead phone or a cut file (ADR-0005 as
+    /// amended 2026-11-09).
+    End {
+        /// When it was stopped, on the boot clock.
+        boot_ns: TimeNs,
+    },
     /// Time the phone slept, so nothing was received.
     Slept {
         /// When it woke, on the boot clock.
@@ -329,8 +336,10 @@ pub enum VerdictLine {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EndReason {
-    /// The feed ended.
-    InputClosed,
+    /// The feed's `end` line came: the session was stopped.
+    Stopped,
+    /// The feed ended without an `end` line: the session was cut.
+    Cut,
 }
 
 /// One line read with [`read_bounded_line`].
