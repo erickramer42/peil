@@ -4,12 +4,14 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.view.View
 import android.view.WindowInsetsController
@@ -28,6 +30,21 @@ import android.widget.TextView
 object Ui {
     fun palette(context: Context): Palette = Options.theme(context).palette
 
+    /**
+     * The app's type: B612, drawn for Airbus's cockpit screens and tested for
+     * legibility on displays (github.com/polarsys/b612, read 2026-11-09), for
+     * an instrument read at a glance, in a vehicle, at night. Its digits are
+     * all one width, so a live count doesn't shift as it updates. Bundled
+     * unmodified under the SIL Open Font License 1.1 (ADR-0004 section 8).
+     */
+    fun sans(context: Context): Typeface = context.resources.getFont(R.font.b612)
+
+    /** B612 Mono, for columns of addresses and the license texts. */
+    fun mono(context: Context): Typeface = context.resources.getFont(R.font.b612_mono)
+
+    /** One corner for every control and dialog: square-shouldered keys, never capsules. */
+    private const val CORNER_DP = 4f
+
     private fun dp(context: Context, v: Float): Int = (v * context.resources.displayMetrics.density).toInt()
 
     /** The window, the title bar and the system bars in the theme; the bars' icons light, since every theme is dark. */
@@ -43,14 +60,17 @@ object Ui {
             bar.setBackgroundDrawable(ColorDrawable(p.surface))
             val title = SpannableString(activity.title)
             title.setSpan(ForegroundColorSpan(p.text), 0, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            title.setSpan(TypefaceSpan(sans(activity)), 0, title.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             bar.title = title
         }
     }
 
     fun text(context: Context, size: Float, color: Int = palette(context).text) = TextView(context).apply {
         textSize = size
+        typeface = sans(context)
         setTextColor(color)
-        setPadding(0, 8, 0, 8)
+        val pad = dp(context, 3f)
+        setPadding(0, pad, 0, pad)
     }
 
     private fun rounded(color: Int, stroke: Int?, radius: Float, context: Context) = GradientDrawable().apply {
@@ -59,16 +79,17 @@ object Ui {
         stroke?.let { setStroke(dp(context, 1f), it) }
     }
 
-    /** A rounded button at least 48 dp tall, with a gap around it; its label shrinks rather than wrapping. */
+    /** A button at least 48 dp tall, with a gap around it; its label shrinks rather than wrapping. */
     fun button(context: Context, label: String, action: () -> Unit) = Button(context).apply {
         val p = palette(context)
-        val radius = dp(context, 24f).toFloat()
+        val radius = dp(context, CORNER_DP).toFloat()
         background = StateListDrawable().apply {
             addState(intArrayOf(android.R.attr.state_pressed), rounded(p.elevatedLight, p.outline, radius, context))
             addState(intArrayOf(), rounded(p.elevated, p.outline, radius, context))
         }
         stateListAnimator = null
         setTextColor(p.text)
+        typeface = sans(context)
         text = label
         isAllCaps = false
         maxLines = 1
@@ -93,9 +114,13 @@ object Ui {
         positive?.let { (label, action) -> builder.setPositiveButton(label) { _, _ -> action() } }
         val dialog = builder.create()
         dialog.setOnShowListener {
-            dialog.window?.setBackgroundDrawable(rounded(p.surface, p.outline, dp(context, 16f).toFloat(), context))
+            dialog.window?.setBackgroundDrawable(rounded(p.surface, p.outline, dp(context, CORNER_DP).toFloat(), context))
             for (which in listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE)) {
-                dialog.getButton(which)?.setTextColor(p.text)
+                dialog.getButton(which)?.apply {
+                    setTextColor(p.text)
+                    typeface = sans(context)
+                    isAllCaps = false
+                }
             }
         }
         dialog.show()
@@ -131,6 +156,7 @@ object Ui {
                 addView(CheckBox(context).apply {
                     text = label
                     textSize = 14f
+                    typeface = sans(context)
                     setTextColor(p.text)
                     buttonTintList = ColorStateList.valueOf(p.text)
                     minHeight = dp(context, 48f)

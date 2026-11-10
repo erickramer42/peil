@@ -1,7 +1,6 @@
 package io.github.erickramer42.sensio
 
 import android.app.Activity
-import android.graphics.Typeface
 import android.os.Handler
 import android.os.Looper
 import java.io.File
@@ -42,7 +41,7 @@ object SessionSummary {
                 if (activity.isFinishing || activity.isDestroyed) return@post
                 val body = Ui.text(activity, 12f).apply {
                     this.text = text
-                    typeface = Typeface.MONOSPACE
+                    typeface = Ui.mono(activity)
                     setTextIsSelectable(true)
                 }
                 Ui.dialog(activity, "Summary, ${label(feed.name)}", body)

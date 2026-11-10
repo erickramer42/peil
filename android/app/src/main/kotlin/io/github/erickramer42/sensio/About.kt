@@ -1,7 +1,6 @@
 package io.github.erickramer42.sensio
 
 import android.content.Context
-import android.graphics.Typeface
 
 /**
  * The About page (ADR-0004 section 8): the app's version, its two licenses
@@ -10,11 +9,14 @@ import android.graphics.Typeface
  * text. The list of libraries is the one `checkPackagedLibraries` allows.
  * The core is built from Rust crates used under MIT, whose notices go with
  * every copy; build-core.sh writes them into the assets beside the core.
+ * The fonts, B612 and B612 Mono, ship under the SIL Open Font License 1.1,
+ * whose text goes with them.
  */
 object About {
     const val MIT = "licenses/LICENSE-MIT"
     const val APACHE = "licenses/LICENSE-APACHE-2.0"
     const val CRATES = "licenses/RUST-CRATES"
+    const val OFL = "licenses/OFL-B612"
 
     fun text(context: Context): String {
         fun asset(path: String) = context.assets.open(path).bufferedReader().use { it.readText() }
@@ -26,10 +28,14 @@ object About {
             append("This app also includes the Kotlin standard library (org.jetbrains.kotlin:kotlin-stdlib) ")
             append("and the JetBrains annotations (org.jetbrains:annotations), ")
             append("each under the Apache License, Version 2.0.\n\n")
+            append("Its type is B612 and B612 Mono (github.com/polarsys/b612), ")
+            append("Copyright 2012 The B612 Project Authors, under the SIL Open Font License, Version 1.1.\n\n")
             append("---- The MIT License ----\n\n")
             append(asset(MIT).trim())
             append("\n\n---- The Apache License, Version 2.0 ----\n\n")
             append(asset(APACHE).trim())
+            append("\n\n---- The SIL Open Font License, Version 1.1 (B612 and B612 Mono) ----\n\n")
+            append(asset(OFL).trim())
             append("\n\n---- The core's Rust crates ----\n\n")
             // A build without build-core.sh has no core either; say so rather than fail.
             append(runCatching { asset(CRATES).trim() }.getOrDefault("This build doesn't include the core."))
@@ -40,7 +46,7 @@ object About {
     fun show(context: Context) {
         val body = Ui.text(context, 12f).apply {
             text = text(context)
-            typeface = Typeface.MONOSPACE
+            typeface = Ui.mono(context)
             setTextIsSelectable(true)
         }
         Ui.dialog(context, "About Peil", body)

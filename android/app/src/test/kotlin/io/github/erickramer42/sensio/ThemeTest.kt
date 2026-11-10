@@ -47,6 +47,23 @@ class ThemeTest {
     }
 
     @Test
+    fun noThemesChromeLeansBlue() {
+        // android.md: color marks data, so no surface or text is navy or blue-purple.
+        for (theme in Theme.entries) {
+            val p = theme.palette
+            val roles = listOf(
+                "bg" to p.bg, "surface" to p.surface, "elevated" to p.elevated, "elevatedLight" to p.elevatedLight,
+                "outline" to p.outline, "faint" to p.faint, "text" to p.text, "textDim" to p.textDim,
+            )
+            for ((role, c) in roles) {
+                val red = (c shr 16) and 0xff
+                val blue = c and 0xff
+                assertTrue("${theme.label}: $role %06x leans blue".format(c and 0xffffff), blue <= red)
+            }
+        }
+    }
+
+    @Test
     fun everyKindHasAColorInEveryTheme() {
         val kinds = setOf("ble", "bt_classic", "access_point", "station")
         for (theme in Theme.entries) assertEquals(theme.label, kinds, theme.palette.kinds.keys)

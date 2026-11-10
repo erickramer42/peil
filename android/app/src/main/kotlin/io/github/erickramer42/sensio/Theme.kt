@@ -36,11 +36,11 @@ enum class Theme(val key: String, val label: String, val palette: Palette) {
     DARK(
         "dark", "Dark",
         Palette(
-            bg = argb(0x14141c), surface = argb(0x1e1e2e), elevated = argb(0x2a2a3e), elevatedLight = argb(0x33334a),
-            outline = argb(0x64647e), faint = argb(0x3a3a50), text = argb(0xe8e8f0), textDim = argb(0x8888a0),
+            bg = argb(0x141413), surface = argb(0x1d1d1b), elevated = argb(0x292926), elevatedLight = argb(0x33332f),
+            outline = argb(0x6b6b63), faint = argb(0x3a3a35), text = argb(0xecebe5), textDim = argb(0x9c9b92),
             danger = argb(0xf87171),
             kinds = mapOf(
-                "ble" to argb(0x50c878), "bt_classic" to argb(0xb482ff), "access_point" to argb(0x5aa0ff),
+                "ble" to argb(0x50c878), "bt_classic" to argb(0xf0b43c), "access_point" to argb(0x5aa0ff),
                 "station" to argb(0x50dce6),
             ),
         ),

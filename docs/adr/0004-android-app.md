@@ -41,6 +41,8 @@ ADR-0001 assumes a Linux computer reading Kismet, rtl_433 and gpsd as separate p
 
    Amended 2026-11-07: the app's own code is under MIT or Apache-2.0, like the workspace (ADR-0001 section 2, as amended), and the About page shows both texts. What may ship in the APK is unchanged.
 
+   Amended 2026-11-09: the APK also ships the app's type, the B612 and B612 Mono fonts (github.com/polarsys/b612, unmodified), under the SIL Open Font License 1.1. A font is not a library and runs no code; its license text ships beside it, the About page shows it with the others, and THIRD_PARTY_NOTICES.md lists it. `LicensesTest` holds each file to the project's own by its SHA-256.
+
 9. **CI builds the app:** the core for `aarch64-linux-android` with the Android NDK, the APK, and the app's JVM unit tests. Because cargo-deny can't see Gradle, a check lists the libraries packaged in the APK and fails on any beyond the Kotlin standard library and its annotations; another check reads the merged manifest (minimum SDK, the permission list, the service and its flags, backups off); and the Gradle wrapper's checksum is validated. Actions are pinned as for the Rust jobs.
 
 ## Consequences

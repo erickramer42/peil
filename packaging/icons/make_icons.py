@@ -20,13 +20,13 @@ colors per kind. The dots stand for no real devices.
 import math
 import os
 
-BG, ELEVATED = "#14141c", "#2a2a3e"
-TEXT, WHITE = "#e8e8f0", "#ffffff"
-RING, SECTOR = "#8a90a0", "#5a606e"   # RingView's ring and sector grays, lifted to read small
+BG, ELEVATED = "#141413", "#292926"
+TEXT, WHITE = "#ecebe5", "#ffffff"
+RING, SECTOR = "#908f87", "#5f5e58"   # RingView's ring and sector grays, lifted to read small
 TILE_FROM, TILE_TO = "#2fd3bf", "#0b6a64"   # teal, lit from the top left
 
 # RingView's colors per kind, and the tracker's
-KIND = {"ble": "#50c878", "bt_classic": "#b482ff", "access_point": "#5aa0ff",
+KIND = {"ble": "#50c878", "bt_classic": "#f0b43c", "access_point": "#5aa0ff",
         "station": "#50dce6"}
 TRACKER = "#ff5050"
 

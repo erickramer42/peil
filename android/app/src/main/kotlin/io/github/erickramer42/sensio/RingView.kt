@@ -55,6 +55,7 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
     }
     private val selectedRing = Paint(halo).apply { color = palette.text }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = Ui.sans(context)
         color = palette.text
         textSize = 12 * density
     }
@@ -149,6 +150,7 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
 
     private fun outlined(canvas: Canvas, text: String, x: Float, y: Float, paint: Paint) {
         labelOutline.textSize = paint.textSize
+        labelOutline.typeface = paint.typeface
         canvas.drawText(text, x, y, labelOutline)
         canvas.drawText(text, x, y, paint)
     }

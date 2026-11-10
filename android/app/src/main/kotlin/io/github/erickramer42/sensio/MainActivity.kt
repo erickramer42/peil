@@ -5,7 +5,6 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -58,9 +57,9 @@ class MainActivity : Activity() {
         val pad = (12 * resources.displayMetrics.density).toInt()
 
         ring = RingView(this, palette).apply { onTap = ::tapped }
-        card = Ui.text(this, 13f).apply { typeface = Typeface.MONOSPACE }
+        card = Ui.text(this, 13f).apply { typeface = Ui.mono(this@MainActivity) }
         status = Ui.text(this, 14f)
-        list = Ui.text(this, 12f).apply { typeface = Typeface.MONOSPACE }
+        list = Ui.text(this, 12f).apply { typeface = Ui.mono(this@MainActivity) }
         startStop = Ui.button(this, "Start") { if (Live.running) stop() else start() }
 
         val buttons = LinearLayout(this).apply {

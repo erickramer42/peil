@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B612 Mono (OFL-1.1, github.com/polarsys/b612), unmodified: columns of addresses and the license texts. -->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font android:fontStyle="normal" android:fontWeight="400" android:font="@font/b612_mono_regular" />
+    <font android:fontStyle="normal" android:fontWeight="700" android:font="@font/b612_mono_bold" />
+</font-family>
