@@ -1,6 +1,6 @@
 # Peil
 
-Nearby transmitters, loudest first. Peil lists the Wi-Fi, Bluetooth, aircraft and drones around a vehicle or a building. It reads what other programs already receive: an Android phone's own scans, and on a laptop, Kismet and readsb (ADS-B at 1090 MHz). GNSS gives them one clock and a position. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
+Nearby transmitters, loudest first. Peil lists the Wi-Fi, Bluetooth, aircraft and drones nearby. It reads what other programs already receive: an Android phone's own scans, and on a laptop, Kismet and readsb (ADS-B at 1090 MHz). GNSS gives them one clock and a position. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
 
 _*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
 
