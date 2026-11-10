@@ -38,7 +38,7 @@ expression: "lines[1..]"
   {
     "type": "emitters",
     "judge_line": 17,
-    "describe_version": 5,
+    "describe_version": 6,
     "recent_ns": 60000000000,
     "at_ns": 1800000624000000000,
     "movement": "stopped",
@@ -193,7 +193,7 @@ expression: "lines[1..]"
   {
     "type": "emitters",
     "judge_line": 23,
-    "describe_version": 5,
+    "describe_version": 6,
     "recent_ns": 60000000000,
     "at_ns": 1800001115000000000,
     "movement": "stopped",
@@ -362,7 +362,7 @@ expression: "lines[1..]"
   {
     "type": "emitters",
     "judge_line": 36,
-    "describe_version": 5,
+    "describe_version": 6,
     "recent_ns": 60000000000,
     "at_ns": 1800001701000000000,
     "movement": "stopped",

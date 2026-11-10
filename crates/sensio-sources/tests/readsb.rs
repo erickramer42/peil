@@ -1,10 +1,170 @@
-//! readsb's aircraft list, read as a file (ADR-0007 section 1), against a
-//! synthetic list.
+//! readsb's aircraft list, read as a file (ADR-0007 section 1), and the
+//! `readsb` normalizer (section 2), against a synthetic list.
 
 use std::path::{Path, PathBuf};
 
+use sensio_core::{Event, EventKind, Normalize};
+use sensio_sources::Sources;
 use sensio_sources::readsb_file::{MAX_FILE_BYTES, ReadError, Reader, STALE_NS};
 use serde_json::Value;
+
+/// The one event `raw` normalizes to, checked as the core checks it.
+fn normalized(raw: &str) -> EventKind {
+    let kinds = Sources.normalize("readsb", raw).expect("normalizes");
+    assert_eq!(kinds.len(), 1, "{raw}");
+    let event = Event {
+        t_ns: CLOCK_NS,
+        source: "readsb".to_owned(),
+        receiver: Some("laptop".to_owned()),
+        kind: kinds[0].clone(),
+    };
+    assert_eq!(event.validate(), Ok(()), "{raw}");
+    kinds[0].clone()
+}
+
+#[test]
+fn the_lists_aircraft_normalize_with_their_fields() {
+    let mut reader = Reader::new(Path::new("unused"));
+    let lines = reader.take_body(LIST.as_bytes(), CLOCK_NS).expect("a list");
+    let EventKind::Aircraft {
+        address,
+        heard_as,
+        callsign,
+        alt_baro_ft,
+        on_ground,
+        alt_geom_ft,
+        ground_speed_kt,
+        track_deg,
+        lat_deg,
+        lon_deg,
+        emitter_category,
+        squawk,
+        emergency,
+        signal_dbfs,
+    } = normalized(&lines[0])
+    else {
+        panic!("not an aircraft");
+    };
+    assert_eq!(address, "aaaa01");
+    assert_eq!(heard_as.as_deref(), Some("adsb_icao"));
+    assert_eq!(callsign.as_deref(), Some("TEST01"), "the padding goes");
+    assert_eq!(
+        (alt_baro_ft, alt_geom_ft, on_ground),
+        (Some(3500), Some(3650), false)
+    );
+    assert_eq!((ground_speed_kt, track_deg), (Some(120.4), Some(271.2)));
+    assert_eq!((lat_deg, lon_deg), (Some(60.01), Some(10.02)));
+    assert_eq!(emitter_category.as_deref(), Some("A7"));
+    assert_eq!(squawk.as_deref(), Some("1200"));
+    assert_eq!(emergency, None, "none is no emergency");
+    assert_eq!(signal_dbfs, Some(-21.4));
+
+    // Mode S only: an altitude and no position.
+    let EventKind::Aircraft {
+        lat_deg,
+        alt_baro_ft,
+        heard_as,
+        ..
+    } = normalized(&lines[1])
+    else {
+        panic!("not an aircraft");
+    };
+    assert_eq!(
+        (lat_deg, alt_baro_ft, heard_as.as_deref()),
+        (None, Some(12000), Some("mode_s"))
+    );
+
+    // A non-ICAO track on the ground whose position is 5 s old.
+    let EventKind::Aircraft {
+        address,
+        on_ground,
+        alt_baro_ft,
+        lat_deg,
+        ..
+    } = normalized(&lines[2])
+    else {
+        panic!("not an aircraft");
+    };
+    assert_eq!(
+        (address.as_str(), on_ground, alt_baro_ft, lat_deg),
+        ("~cccc03", true, None, Some(60.02))
+    );
+}
+
+#[test]
+fn a_field_of_the_wrong_shape_or_out_of_range_reads_as_absent() {
+    let raw = r#"{"hex":"AAAA01","type":"ADS B","flight":"test 01!","alt_baro":200000,"alt_geom":"high",
+        "gs":-3,"track":360,"lat":91,"lon":10.02,"category":"E1","squawk":"7800","emergency":"mayday","rssi":3}"#;
+    let EventKind::Aircraft {
+        address,
+        heard_as,
+        callsign,
+        alt_baro_ft,
+        alt_geom_ft,
+        ground_speed_kt,
+        track_deg,
+        lat_deg,
+        lon_deg,
+        emitter_category,
+        squawk,
+        emergency,
+        signal_dbfs,
+        ..
+    } = normalized(raw)
+    else {
+        panic!("not an aircraft");
+    };
+    assert_eq!(address, "aaaa01", "lowercased");
+    assert_eq!(
+        (
+            heard_as,
+            callsign,
+            alt_baro_ft,
+            alt_geom_ft,
+            emitter_category,
+            squawk,
+            emergency
+        ),
+        (None, None, None, None, None, None, None)
+    );
+    assert_eq!(
+        (ground_speed_kt, track_deg, lat_deg, lon_deg, signal_dbfs),
+        (None, None, None, None, None)
+    );
+}
+
+#[test]
+fn a_position_older_than_ten_seconds_is_left_out() {
+    let at = |seen: &str| {
+        let raw = format!(r#"{{"hex":"aaaa01","lat":60.01,"lon":10.02,"seen_pos":{seen}}}"#);
+        let EventKind::Aircraft { lat_deg, .. } = normalized(&raw) else {
+            panic!("not an aircraft");
+        };
+        lat_deg
+    };
+    assert_eq!(at("10.0"), Some(60.01));
+    assert_eq!(at("10.5"), None);
+    assert_eq!(at("-1"), None);
+    assert_eq!(at(r#""soon""#), None);
+}
+
+#[test]
+fn what_has_no_usable_address_is_rejected_without_its_values() {
+    for raw in [
+        "",
+        "[]",
+        r#"{"flight":"TEST01"}"#,
+        r#"{"hex":"aaaa0"}"#,
+        r#"{"hex":"aaaa0g"}"#,
+        r#"{"hex":7}"#,
+    ] {
+        let reason = Sources.normalize("readsb", raw).expect_err(raw);
+        assert!(
+            !reason.contains("TEST01") && !reason.contains("aaaa0"),
+            "{reason}"
+        );
+    }
+}
 
 const LIST: &str = include_str!("fixtures/readsb-aircraft.json");
 const CLOCK_NS: i64 = 1_800_000_000_000_000_000;

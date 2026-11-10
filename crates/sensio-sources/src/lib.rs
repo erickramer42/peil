@@ -30,6 +30,7 @@ impl Normalize for Sources {
         match source {
             android::SOURCE => android::normalize(raw),
             kismet::SOURCE => kismet::normalize(raw),
+            readsb::SOURCE => readsb::normalize(raw),
             sensio::SOURCE => sensio::normalize(raw),
             _ => Err("no normalizer for this source".to_owned()),
         }

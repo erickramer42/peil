@@ -19,7 +19,7 @@ use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 5;
+pub const DESCRIBE_VERSION: u32 = 6;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -99,6 +99,8 @@ pub enum EmitterKind {
     BtClassic,
     /// A tire-pressure sensor.
     Tpms,
+    /// An aircraft, from its 1090 MHz broadcasts (ADR-0007).
+    Aircraft,
 }
 
 /// A signal-strength band; never a distance.
@@ -111,8 +113,8 @@ pub enum Band {
     Medium,
     /// Weak.
     Weak,
-    /// No strength on a scale the bands use (none reported, or TPMS's
-    /// relative scale).
+    /// No strength on a scale the bands use (none reported, TPMS's relative
+    /// scale, or an aircraft's dBFS).
     Unknown,
 }
 
@@ -129,6 +131,8 @@ pub enum Address {
     Ble,
     /// Not an address (a TPMS sensor ID).
     NotAnAddress,
+    /// An aircraft's 24-bit address, which no vendor registry covers.
+    Aircraft,
 }
 
 /// The tracker network an advert's format names.
@@ -217,6 +221,124 @@ pub struct Description {
     /// that address carries it too.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub own: Option<String>,
+    /// What an aircraft last announced, and where it is from the vehicle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aircraft: Option<AircraftState>,
+}
+
+/// An aircraft's latest announcements (ADR-0007 sections 2 and 3): each
+/// field is the latest one it sent, so a field it stopped sending keeps its
+/// last value, except `on_ground` and `emergency`, which are the latest
+/// event's.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct AircraftState {
+    /// How the decoder last heard it (`adsb_icao`, `mode_s`, `mlat` and the rest).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heard_as: Option<String>,
+    /// Its callsign.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub callsign: Option<String>,
+    /// Barometric altitude, feet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt_baro_ft: Option<i32>,
+    /// Whether it last announced being on the ground.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub on_ground: bool,
+    /// Geometric altitude, feet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt_geom_ft: Option<i32>,
+    /// Ground speed, knots.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ground_speed_kt: Option<f64>,
+    /// Track over the ground, degrees from true north.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub track_deg: Option<f64>,
+    /// Its latest position, degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lat_deg: Option<f64>,
+    /// Its latest position, degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lon_deg: Option<f64>,
+    /// When it reported that position.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_ns: Option<TimeNs>,
+    /// Great-circle distance from the vehicle's latest fix to that position,
+    /// meters, when both are known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_m: Option<f64>,
+    /// Bearing from the vehicle's latest fix to that position, degrees
+    /// clockwise from true north, when both are known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bearing_deg: Option<f64>,
+    /// Its emitter category code, `A0` to `D7`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emitter_category: Option<String>,
+    /// Its Mode A code.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub squawk: Option<String>,
+    /// The emergency it last announced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emergency: Option<String>,
+    /// Its latest signal strength, dBFS.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signal_dbfs: Option<f64>,
+}
+
+impl AircraftState {
+    /// Takes the next aircraft event's fields, in the judge's order.
+    fn observe(&mut self, t_ns: TimeNs, kind: &EventKind) {
+        let EventKind::Aircraft {
+            heard_as,
+            callsign,
+            alt_baro_ft,
+            on_ground,
+            alt_geom_ft,
+            ground_speed_kt,
+            track_deg,
+            lat_deg,
+            lon_deg,
+            emitter_category,
+            squawk,
+            emergency,
+            signal_dbfs,
+            address: _,
+        } = kind
+        else {
+            return;
+        };
+        let keep = |field: &mut Option<String>, new: &Option<String>| {
+            if new.is_some() {
+                field.clone_from(new);
+            }
+        };
+        keep(&mut self.heard_as, heard_as);
+        keep(&mut self.callsign, callsign);
+        keep(&mut self.emitter_category, emitter_category);
+        keep(&mut self.squawk, squawk);
+        self.alt_baro_ft = alt_baro_ft.or(self.alt_baro_ft);
+        self.alt_geom_ft = alt_geom_ft.or(self.alt_geom_ft);
+        self.ground_speed_kt = ground_speed_kt.or(self.ground_speed_kt);
+        self.track_deg = track_deg.or(self.track_deg);
+        self.signal_dbfs = signal_dbfs.or(self.signal_dbfs);
+        if let (Some(lat), Some(lon)) = (lat_deg, lon_deg) {
+            (self.lat_deg, self.lon_deg, self.position_ns) = (Some(*lat), Some(*lon), Some(t_ns));
+        }
+        self.on_ground = *on_ground;
+        self.emergency.clone_from(emergency);
+    }
+
+    /// This state with its distance and bearing from `fix`, where both
+    /// positions are known.
+    fn seen_from(&self, fix: Option<Fix>) -> Self {
+        let mut out = self.clone();
+        if let (Some((_, from_lat, from_lon)), Some(lat), Some(lon)) =
+            (fix, self.lat_deg, self.lon_deg)
+        {
+            out.distance_m = Some(crate::geo::distance_m(from_lat, from_lon, lat, lon));
+            out.bearing_deg = Some(crate::geo::bearing_deg(from_lat, from_lon, lat, lon));
+        }
+        out
+    }
 }
 
 /// The addresses receivers reported as their own, by the device IDs they
@@ -309,6 +431,14 @@ pub struct KindCounts {
     pub bt_classic: u64,
     /// Tire-pressure sensors.
     pub tpms: u64,
+    /// Aircraft; left out of the line when there are none.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub aircraft: u64,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // serde's skip_serializing_if takes a reference.
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 impl KindCounts {
@@ -319,6 +449,7 @@ impl KindCounts {
             EmitterKind::Ble => &mut self.ble,
             EmitterKind::BtClassic => &mut self.bt_classic,
             EmitterKind::Tpms => &mut self.tpms,
+            EmitterKind::Aircraft => &mut self.aircraft,
         };
         *count += 1;
     }
@@ -571,6 +702,41 @@ fn axon_category(track: &Track) -> Option<Category> {
     })
 }
 
+/// The kind an aircraft announces in its ADS-B identification message, from
+/// its emitter category code (ADR-0007 section 4). The entry names the code.
+///
+/// - The categories: "The 1090 Megahertz Riddle" (Junzi Sun, second
+///   edition), "Aircraft Identification and Category", Table 1.1,
+///   mode-s.org/1090mhz/content/ads-b/2-identification.html (read
+///   2026-11-09). Category 0 of each set says nothing, set D and the codes
+///   it lists as reserved aren't entries.
+/// - The codes: readsb prints the type code's set as a letter, A for type
+///   code 4, B for 3, C for 2, D for 1, then the category (`mode_s.c`,
+///   `category = ((0x0E - metype) << 4) | mesub`, and `json_out.c`, `%02X`;
+///   github.com/wiedehopf/readsb, read 2026-11-09).
+fn adsb_category(code: &str) -> Option<Category> {
+    let (category, entry) = match code {
+        "A1" => ("light-aircraft", "adsb-a1"),
+        "A2" => ("medium-aircraft", "adsb-a2"),
+        "A3" => ("medium-aircraft", "adsb-a3"),
+        "A4" => ("high-vortex-aircraft", "adsb-a4"),
+        "A5" => ("heavy-aircraft", "adsb-a5"),
+        "A6" => ("high-performance-aircraft", "adsb-a6"),
+        "A7" => ("rotorcraft", "adsb-a7"),
+        "B1" => ("glider", "adsb-b1"),
+        "B2" => ("lighter-than-air", "adsb-b2"),
+        "B3" => ("parachutist", "adsb-b3"),
+        "B4" => ("ultralight", "adsb-b4"),
+        "B6" => ("unmanned-aircraft", "adsb-b6"),
+        "B7" => ("space-vehicle", "adsb-b7"),
+        "C1" => ("surface-emergency-vehicle", "adsb-c1"),
+        "C2" => ("surface-service-vehicle", "adsb-c2"),
+        "C3" => ("ground-obstruction", "adsb-c3"),
+        _ => return None,
+    };
+    Some(Category { category, entry })
+}
+
 /// Whether a network's name is the camera's setup hotspot.
 fn is_flock_softap(ssid: &str) -> bool {
     ssid.strip_prefix("Flock-")
@@ -762,6 +928,8 @@ fn sighting(kind: &EventKind) -> Option<(EmitterKind, Option<f32>, Option<&Strin
             Some((EmitterKind::BtClassic, rssi_dbm.map(f32::from), Some(addr)))
         }
         EventKind::Tpms { rssi_dbm, .. } => Some((EmitterKind::Tpms, *rssi_dbm, None)),
+        // dBFS is never placed on the dBm scale (ADR-0007 section 2).
+        EventKind::Aircraft { address, .. } => Some((EmitterKind::Aircraft, None, Some(address))),
         EventKind::GnssFix { .. } | EventKind::Heading { .. } => None,
     }
 }
@@ -782,6 +950,7 @@ struct Track {
     tracker: Option<(Tracker, Category)>,
     security: Option<WifiSecurity>,
     device_class: Option<u32>,
+    aircraft: Option<AircraftState>,
 }
 
 impl Track {
@@ -799,6 +968,7 @@ impl Track {
             tracker: None,
             security: None,
             device_class: None,
+            aircraft: None,
         }
     }
 
@@ -844,6 +1014,10 @@ impl Track {
                 device_class: Some(class),
                 ..
             } => self.device_class = Some(*class),
+            EventKind::Aircraft { .. } => self
+                .aircraft
+                .get_or_insert_with(AircraftState::default)
+                .observe(event.t_ns, &event.kind),
             _ => {}
         }
     }
@@ -863,6 +1037,8 @@ struct MovementFold {
     window: Window,
     moving: Option<bool>,
     stopped_since: Option<TimeNs>,
+    /// The latest fix that counted, for distances and bearings from the vehicle.
+    latest: Option<Fix>,
 }
 
 impl MovementFold {
@@ -872,6 +1048,7 @@ impl MovementFold {
         if now_ns.is_some_and(|now| fix.0 > now) {
             return;
         }
+        self.latest = Some(fix);
         let Some((fast, (t0, _, _))) =
             self.window
                 .observe(fix, params.moving_window_ns, params.moving_mps)
@@ -990,6 +1167,7 @@ impl DescribeFold {
                     device,
                     track,
                     windows.remove(device),
+                    movement.latest,
                     params,
                     vendors,
                 ))
@@ -1057,18 +1235,20 @@ fn description(
     device: &DeviceId,
     track: &Track,
     recent: Option<Recent>,
+    fix: Option<Fix>,
     params: &DescribeParams,
     vendors: &VendorTable,
 ) -> Description {
     let recent = recent.unwrap_or_default();
     let band = match (track.kind, recent.strongest_dbm) {
-        (EmitterKind::Tpms, _) | (_, None) => Band::Unknown,
+        (EmitterKind::Tpms | EmitterKind::Aircraft, _) | (_, None) => Band::Unknown,
         (_, Some(d)) if d >= f32::from(params.strong_dbm) => Band::Strong,
         (_, Some(d)) if d >= f32::from(params.weak_dbm) => Band::Medium,
         (_, Some(_)) => Band::Weak,
     };
     let address = match (track.kind, &track.addr) {
         (EmitterKind::Ble, _) => Address::Ble,
+        (EmitterKind::Aircraft, _) => Address::Aircraft,
         (_, None) => Address::NotAnAddress,
         (_, Some(a))
             if u8::from_str_radix(a.get(..2).unwrap_or("00"), 16).is_ok_and(|b| b & 0x02 != 0) =>
@@ -1109,9 +1289,14 @@ fn description(
             Some((_, category)) => Some(category),
             None => flock_category(track)
                 .or_else(|| axon_category(track))
-                .or_else(|| track.device_class.and_then(classic_category)),
+                .or_else(|| track.device_class.and_then(classic_category))
+                .or_else(|| {
+                    let state = track.aircraft.as_ref()?;
+                    adsb_category(state.emitter_category.as_deref()?)
+                }),
         },
         own: None,
+        aircraft: track.aircraft.as_ref().map(|a| a.seen_from(fix)),
     }
 }
 

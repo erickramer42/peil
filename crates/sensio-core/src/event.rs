@@ -122,6 +122,57 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         accuracy_deg: Option<f64>,
     },
+    /// An aircraft, as a 1090 MHz decoder heard it (ADR-0007 section 2). Its
+    /// strength is relative to the receiver's full scale (dBFS), never dBm.
+    Aircraft {
+        /// Its 24-bit address as six hex digits; a leading `~` marks one that
+        /// isn't an ICAO address (a TIS-B track, say).
+        address: String,
+        /// How the decoder heard it (`adsb_icao`, `mode_s`, `mlat` and the
+        /// rest), when it said.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        heard_as: Option<String>,
+        /// The callsign it announces, without padding: 1 to 8 of A-Z, 0-9
+        /// and space.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        callsign: Option<String>,
+        /// Barometric altitude, feet, -2000 to 130000.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alt_baro_ft: Option<i32>,
+        /// Whether it announces being on the ground.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        on_ground: bool,
+        /// Geometric (GNSS) altitude, feet, -2000 to 130000.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        alt_geom_ft: Option<i32>,
+        /// Ground speed, knots, 0 to 5000.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        ground_speed_kt: Option<f64>,
+        /// Track over the ground, degrees clockwise from true north, 0 to
+        /// under 360.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        track_deg: Option<f64>,
+        /// Latitude, degrees north; with `lon_deg` or not at all.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lat_deg: Option<f64>,
+        /// Longitude, degrees east; with `lat_deg` or not at all.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lon_deg: Option<f64>,
+        /// Its emitter category as decoders print it, `A0` to `D7`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        emitter_category: Option<String>,
+        /// Its Mode A code, four octal digits.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        squawk: Option<String>,
+        /// The emergency it announces (`general`, `lifeguard`, `minfuel`,
+        /// `nordo`, `unlawful`, `downed`, `reserved`); none when it announces
+        /// none.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        emergency: Option<String>,
+        /// Signal strength, dBFS, -100 to 0.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        signal_dbfs: Option<f64>,
+    },
 }
 
 /// One manufacturer-specific data entry of a BLE advert.
@@ -208,6 +259,7 @@ impl EventKind {
             Self::WifiClient { .. } => "wifi_client",
             Self::GnssFix { .. } => "gnss_fix",
             Self::Heading { .. } => "heading",
+            Self::Aircraft { .. } => "aircraft",
         }
     }
 
@@ -226,6 +278,9 @@ impl EventKind {
             }
             Self::WifiAp { bssid: addr, .. } | Self::WifiClient { addr, .. } => {
                 Some(DeviceId(format!("wifi:{}", addr.to_ascii_lowercase())))
+            }
+            Self::Aircraft { address, .. } => {
+                Some(DeviceId(format!("adsb:{}", address.to_ascii_lowercase())))
             }
             Self::GnssFix { .. } | Self::Heading { .. } => None,
         }
@@ -485,7 +540,106 @@ fn validate_position(kind: &EventKind) -> Result<(), &'static str> {
         | EventKind::BtClassic { .. }
         | EventKind::Tpms { .. }
         | EventKind::WifiAp { .. }
-        | EventKind::WifiClient { .. } => {}
+        | EventKind::WifiClient { .. }
+        | EventKind::Aircraft { .. } => {}
+    }
+    Ok(())
+}
+
+/// The emergencies a decoder names, besides none.
+const EMERGENCIES: [&str; 7] = [
+    "general",
+    "lifeguard",
+    "minfuel",
+    "nordo",
+    "unlawful",
+    "downed",
+    "reserved",
+];
+
+/// The altitudes an aircraft may report, feet.
+const ALTITUDE_FT: std::ops::RangeInclusive<i32> = -2000..=130_000;
+
+/// The ranges of an aircraft's fields (ADR-0007 section 2).
+fn validate_aircraft(kind: &EventKind) -> Result<(), &'static str> {
+    let EventKind::Aircraft {
+        address,
+        heard_as,
+        callsign,
+        alt_baro_ft,
+        on_ground: _,
+        alt_geom_ft,
+        ground_speed_kt,
+        track_deg,
+        lat_deg,
+        lon_deg,
+        emitter_category,
+        squawk,
+        emergency,
+        signal_dbfs,
+    } = kind
+    else {
+        return Ok(());
+    };
+    let hex = address.strip_prefix('~').unwrap_or(address);
+    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("aircraft address isn't six hex digits, after a '~' for a non-ICAO one");
+    }
+    if heard_as.as_deref().is_some_and(|h| !is_label(h)) {
+        return Err("how the aircraft was heard isn't a label");
+    }
+    let callsign_char = |b: u8| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b' ';
+    if callsign
+        .as_deref()
+        .is_some_and(|c| c.is_empty() || c.len() > 8 || !c.bytes().all(callsign_char))
+    {
+        return Err("callsign must be 1 to 8 of A-Z, 0-9 and space");
+    }
+    if [alt_baro_ft, alt_geom_ft]
+        .iter()
+        .any(|a| a.is_some_and(|a| !ALTITUDE_FT.contains(&a)))
+    {
+        return Err("aircraft altitude out of range: -2000 to 130000 feet");
+    }
+    if ground_speed_kt.is_some_and(|s| !s.is_finite() || !(0.0..=5000.0).contains(&s)) {
+        return Err("aircraft ground speed out of range: 0 to 5000 knots");
+    }
+    if track_deg.is_some_and(|t| !t.is_finite() || !(0.0..360.0).contains(&t)) {
+        return Err("aircraft track out of range: 0 to under 360 degrees");
+    }
+    match (lat_deg, lon_deg) {
+        (None, None) => {}
+        (Some(lat), Some(lon)) => {
+            if !lat.is_finite() || !(-90.0..=90.0).contains(lat) {
+                return Err("latitude out of range");
+            }
+            if !lon.is_finite() || !(-180.0..=180.0).contains(lon) {
+                return Err("longitude out of range");
+            }
+        }
+        _ => return Err("an aircraft's latitude and longitude come together"),
+    }
+    let category = |c: &str| {
+        let b = c.as_bytes();
+        b.len() == 2 && (b'A'..=b'D').contains(&b[0]) && (b'0'..=b'7').contains(&b[1])
+    };
+    if emitter_category.as_deref().is_some_and(|c| !category(c)) {
+        return Err("emitter category isn't A0 to D7");
+    }
+    if squawk
+        .as_deref()
+        .is_some_and(|s| s.len() != 4 || !s.bytes().all(|b| (b'0'..=b'7').contains(&b)))
+    {
+        return Err("squawk isn't four octal digits");
+    }
+    if emergency
+        .as_deref()
+        .is_some_and(|e| !EMERGENCIES.contains(&e))
+    {
+        return Err("emergency isn't one a decoder names");
+    }
+    if signal_dbfs.is_some_and(|s| !s.is_finite() || !(-100.0..=0.0).contains(&s)) {
+        return Err("aircraft signal out of range: -100 to 0 dBFS");
     }
     Ok(())
 }
@@ -496,6 +650,7 @@ fn validate(event: &Event) -> Result<(), &'static str> {
     }
     match &event.kind {
         EventKind::GnssFix { .. } | EventKind::Heading { .. } => validate_position(&event.kind)?,
+        EventKind::Aircraft { .. } => validate_aircraft(&event.kind)?,
         EventKind::BleAdvert {
             addr,
             rssi_dbm,

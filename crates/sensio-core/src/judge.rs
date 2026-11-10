@@ -287,6 +287,20 @@ pub(crate) fn order_key(event: &Event, input: usize) -> (TimeNs, u8, usize) {
     (event.t_ns, fix_first, input)
 }
 
+/// The device a sighting counts toward in the judge, or `None` for an event
+/// the judge doesn't read: a fix, a heading, and an aircraft, which is in the
+/// picture but no rule yet (ADR-0007 section 3).
+fn judged_device(kind: &EventKind) -> Option<DeviceId> {
+    match kind {
+        EventKind::BleAdvert { .. }
+        | EventKind::BtClassic { .. }
+        | EventKind::Tpms { .. }
+        | EventKind::WifiAp { .. }
+        | EventKind::WifiClient { .. } => kind.device(),
+        EventKind::GnssFix { .. } | EventKind::Heading { .. } | EventKind::Aircraft { .. } => None,
+    }
+}
+
 /// The judge's state over events read in its order ([`order_key`]); the
 /// live judge folds a session into it as the session goes.
 #[derive(Debug, Clone, Default)]
@@ -305,7 +319,7 @@ impl JudgeFold {
             self.vehicle.observe((event.t_ns, lat_deg, lon_deg), rule);
             return;
         }
-        let Some(device) = event.kind.device() else {
+        let Some(device) = judged_device(&event.kind) else {
             return;
         };
         let t = event.t_ns;
@@ -333,7 +347,7 @@ impl JudgeFold {
                 vehicle.observe((event.t_ns, lat_deg, lon_deg), rule);
                 continue;
             }
-            let Some(device) = event.kind.device() else {
+            let Some(device) = judged_device(&event.kind) else {
                 continue;
             };
             let t = event.t_ns;
