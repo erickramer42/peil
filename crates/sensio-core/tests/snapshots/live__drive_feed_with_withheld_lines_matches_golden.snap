@@ -20,13 +20,13 @@ expression: "live(FEED, true)[1..]"
             "events": 6,
             "last_boot_ns": 623000000000
           },
+          "bt_classic": {
+            "events": 2,
+            "last_boot_ns": 625000000000
+          },
           "gnss_fix": {
             "events": 6,
             "last_boot_ns": 622000000000
-          },
-          "tpms": {
-            "events": 2,
-            "last_boot_ns": 625000000000
           }
         }
       }
@@ -38,7 +38,7 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "emitters",
     "judge_line": 17,
-    "describe_version": 6,
+    "describe_version": 7,
     "recent_ns": 60000000000,
     "at_ns": 1800000624000000000,
     "movement": "stopped",
@@ -61,21 +61,21 @@ expression: "live(FEED, true)[1..]"
         "address": "ble"
       },
       {
-        "device": "tpms:0a1b2c3d",
-        "kind": "tpms",
+        "device": "bt:dd:dd:dd:00:00:06",
+        "kind": "bt_classic",
         "receivers": [],
         "first_seen_ns": 1800000014000000000,
         "last_seen_ns": 1800000623000000000,
         "sightings": 2,
-        "latest_dbm": -13.0,
-        "strongest_dbm": -13.0,
-        "band": "unknown",
+        "latest_dbm": -67.0,
+        "strongest_dbm": -67.0,
+        "band": "medium",
         "recent": [
           {
             "sightings": 1
           }
         ],
-        "address": "not_an_address"
+        "address": "global"
       }
     ],
     "older": 3,
@@ -84,19 +84,17 @@ expression: "live(FEED, true)[1..]"
         "access_point": 0,
         "station": 0,
         "ble": 1,
-        "bt_classic": 0,
-        "tpms": 1
+        "bt_classic": 1
       },
       "randomized_wifi": 0,
       "new": {
         "access_point": 0,
         "station": 0,
         "ble": 0,
-        "bt_classic": 0,
-        "tpms": 0
+        "bt_classic": 0
       },
       "newest": [
-        "tpms:0a1b2c3d",
+        "bt:dd:dd:dd:00:00:06",
         "ble:aa:aa:aa:00:00:01"
       ]
     }
@@ -132,7 +130,7 @@ expression: "live(FEED, true)[1..]"
         ]
       },
       {
-        "device": "tpms:0a1b2c3d",
+        "device": "bt:dd:dd:dd:00:00:06",
         "rule": "persistence.places",
         "rule_set_version": 2,
         "first_seen_ns": 1800000014000000000,
@@ -175,13 +173,13 @@ expression: "live(FEED, true)[1..]"
             "events": 7,
             "last_boot_ns": 1113000000000
           },
+          "bt_classic": {
+            "events": 3,
+            "last_boot_ns": 1116000000000
+          },
           "gnss_fix": {
             "events": 9,
             "last_boot_ns": 1112000000000
-          },
-          "tpms": {
-            "events": 3,
-            "last_boot_ns": 1116000000000
           }
         }
       }
@@ -193,7 +191,7 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "emitters",
     "judge_line": 23,
-    "describe_version": 6,
+    "describe_version": 7,
     "recent_ns": 60000000000,
     "at_ns": 1800001115000000000,
     "movement": "stopped",
@@ -216,21 +214,21 @@ expression: "live(FEED, true)[1..]"
         "address": "ble"
       },
       {
-        "device": "tpms:0a1b2c3d",
-        "kind": "tpms",
+        "device": "bt:dd:dd:dd:00:00:06",
+        "kind": "bt_classic",
         "receivers": [],
         "first_seen_ns": 1800000014000000000,
         "last_seen_ns": 1800001114000000000,
         "sightings": 3,
-        "latest_dbm": -12.0,
-        "strongest_dbm": -12.0,
-        "band": "unknown",
+        "latest_dbm": -65.0,
+        "strongest_dbm": -65.0,
+        "band": "medium",
         "recent": [
           {
             "sightings": 1
           }
         ],
-        "address": "not_an_address"
+        "address": "global"
       }
     ],
     "older": 3,
@@ -239,19 +237,17 @@ expression: "live(FEED, true)[1..]"
         "access_point": 0,
         "station": 0,
         "ble": 1,
-        "bt_classic": 0,
-        "tpms": 1
+        "bt_classic": 1
       },
       "randomized_wifi": 0,
       "new": {
         "access_point": 0,
         "station": 0,
         "ble": 0,
-        "bt_classic": 0,
-        "tpms": 0
+        "bt_classic": 0
       },
       "newest": [
-        "tpms:0a1b2c3d",
+        "bt:dd:dd:dd:00:00:06",
         "ble:aa:aa:aa:00:00:01"
       ]
     }
@@ -294,7 +290,7 @@ expression: "live(FEED, true)[1..]"
         ]
       },
       {
-        "device": "tpms:0a1b2c3d",
+        "device": "bt:dd:dd:dd:00:00:06",
         "rule": "persistence.places",
         "rule_set_version": 2,
         "first_seen_ns": 1800000014000000000,
@@ -344,13 +340,13 @@ expression: "live(FEED, true)[1..]"
             "events": 10,
             "last_boot_ns": 1702000000000
           },
+          "bt_classic": {
+            "events": 3,
+            "last_boot_ns": 1116000000000
+          },
           "gnss_fix": {
             "events": 15,
             "last_boot_ns": 1602000000000
-          },
-          "tpms": {
-            "events": 3,
-            "last_boot_ns": 1116000000000
           }
         }
       }
@@ -362,7 +358,7 @@ expression: "live(FEED, true)[1..]"
   {
     "type": "emitters",
     "judge_line": 36,
-    "describe_version": 6,
+    "describe_version": 7,
     "recent_ns": 60000000000,
     "at_ns": 1800001701000000000,
     "movement": "stopped",
@@ -391,16 +387,14 @@ expression: "live(FEED, true)[1..]"
         "access_point": 0,
         "station": 0,
         "ble": 1,
-        "bt_classic": 0,
-        "tpms": 0
+        "bt_classic": 0
       },
       "randomized_wifi": 0,
       "new": {
         "access_point": 0,
         "station": 0,
         "ble": 1,
-        "bt_classic": 0,
-        "tpms": 0
+        "bt_classic": 0
       },
       "newest": [
         "ble:dd:dd:dd:00:00:04"
@@ -452,7 +446,7 @@ expression: "live(FEED, true)[1..]"
         ]
       },
       {
-        "device": "tpms:0a1b2c3d",
+        "device": "bt:dd:dd:dd:00:00:06",
         "rule": "persistence.places",
         "rule_set_version": 2,
         "first_seen_ns": 1800000014000000000,
@@ -502,13 +496,13 @@ expression: "live(FEED, true)[1..]"
             "events": 10,
             "last_boot_ns": 1702000000000
           },
+          "bt_classic": {
+            "events": 3,
+            "last_boot_ns": 1116000000000
+          },
           "gnss_fix": {
             "events": 15,
             "last_boot_ns": 1602000000000
-          },
-          "tpms": {
-            "events": 3,
-            "last_boot_ns": 1116000000000
           }
         }
       }

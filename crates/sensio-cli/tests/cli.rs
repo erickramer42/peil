@@ -28,7 +28,7 @@ fn judge_prints_one_verdict_per_flagged_device() {
             v["device"].as_str().expect("a device").to_owned()
         })
         .collect();
-    assert_eq!(devices, ["ble:aa:aa:aa:00:00:01", "tpms:0a1b2c3d"]);
+    assert_eq!(devices, ["ble:aa:aa:aa:00:00:01", "bt:dd:dd:dd:00:00:06"]);
 }
 
 #[test]
@@ -144,7 +144,10 @@ fn live_replays_a_saved_feed() {
         String::from_utf8_lossy(&output.stderr)
     );
     let (devices, types) = last_answer(&output.stdout);
-    assert_eq!(devices, ["ble:aa:aa:aa:00:00:01 x3", "tpms:0a1b2c3d x3"]);
+    assert_eq!(
+        devices,
+        ["ble:aa:aa:aa:00:00:01 x3", "bt:dd:dd:dd:00:00:06 x3"]
+    );
     assert_eq!(types.first().map(String::as_str), Some("start"));
     assert_eq!(types.last().map(String::as_str), Some("end"));
     assert_eq!(types.iter().filter(|t| *t == "verdicts").count(), 3);
@@ -167,7 +170,7 @@ fn live_with_all_judges_withheld_lines_too() {
     );
     assert_eq!(
         last_answer(&output.stdout).0,
-        ["ble:aa:aa:aa:00:00:01 x4", "tpms:0a1b2c3d x3"]
+        ["ble:aa:aa:aa:00:00:01 x4", "bt:dd:dd:dd:00:00:06 x3"]
     );
 }
 
@@ -445,7 +448,10 @@ fn summary_reports_the_session_and_its_verdicts_as_text() {
         text.contains("persistence.places: ble:aa:aa:aa:00:00:01"),
         "{text}"
     );
-    assert!(text.contains("persistence.places: tpms:0a1b2c3d"), "{text}");
+    assert!(
+        text.contains("persistence.places: bt:dd:dd:dd:00:00:06"),
+        "{text}"
+    );
 }
 
 #[test]

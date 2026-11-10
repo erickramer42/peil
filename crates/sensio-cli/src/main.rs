@@ -248,7 +248,7 @@ fn run_command(command: Command) -> Result<ExitCode> {
             let (counts, new) = (&picture.texture.counts, &picture.texture.new);
             eprintln!(
                 "{} access points ({} new), {} stations ({} new), {} BLE ({} new), \
-                 {} Classic ({} new), {} TPMS ({} new); {} randomized Wi-Fi",
+                 {} Classic ({} new); {} randomized Wi-Fi",
                 counts.access_point,
                 new.access_point,
                 counts.station,
@@ -257,8 +257,6 @@ fn run_command(command: Command) -> Result<ExitCode> {
                 new.ble,
                 counts.bt_classic,
                 new.bt_classic,
-                counts.tpms,
-                new.tpms,
                 picture.texture.randomized_wifi,
             );
             Ok(ExitCode::SUCCESS)

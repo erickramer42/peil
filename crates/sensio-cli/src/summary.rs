@@ -197,11 +197,11 @@ pub fn text(s: &Summary) -> String {
         let _ = writeln!(out, "  {line}");
     }
     let e = &s.emitters;
-    let total = e.ble + e.access_point + e.station + e.bt_classic + e.tpms;
+    let total = e.ble + e.access_point + e.station + e.bt_classic;
     let _ = writeln!(
         out,
-        "Emitters heard: {total} (BLE {}, access points {}, stations {}, Classic {}, TPMS {})",
-        e.ble, e.access_point, e.station, e.bt_classic, e.tpms
+        "Emitters heard: {total} (BLE {}, access points {}, stations {}, Classic {})",
+        e.ble, e.access_point, e.station, e.bt_classic
     );
     let _ = writeln!(
         out,

@@ -1,1 +1,1 @@
-{"t_ns":1800000004000000000,"source":"rtl_433","kind":"tpms","sensor_id":"0A1B2C3D","rssi_dbm":-12.5}
+{"t_ns":1800000004000000000,"source":"kismet","kind":"bt_classic","addr":"DD:DD:DD:00:00:06","rssi_dbm":-66}

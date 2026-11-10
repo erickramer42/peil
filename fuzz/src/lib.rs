@@ -199,8 +199,6 @@ pub enum Kind {
     Heading(f64, f64, f64, Option<f64>),
     /// A BLE advert.
     Ble(Addr, Option<i16>, Advert),
-    /// A TPMS transmission; the ID is one of a few, or any text.
-    Tpms(Result<u8, String>, Option<f32>),
     /// A Wi-Fi access point.
     Ap(
         Addr,
@@ -244,13 +242,6 @@ impl Kind {
                     service_uuids,
                 }
             }
-            Self::Tpms(id, rssi_dbm) => EventKind::Tpms {
-                sensor_id: match id {
-                    Ok(n) => format!("0a1b2c{:02x}", n % 4),
-                    Err(s) => s.clone(),
-                },
-                rssi_dbm: *rssi_dbm,
-            },
             Self::Ap(bssid, ssid, freq_mhz, rssi_dbm, security) => EventKind::WifiAp {
                 bssid: bssid.text(),
                 ssid: ssid.clone(),

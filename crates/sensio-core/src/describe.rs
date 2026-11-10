@@ -19,7 +19,7 @@ use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 6;
+pub const DESCRIBE_VERSION: u32 = 7;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -97,8 +97,6 @@ pub enum EmitterKind {
     Ble,
     /// A Bluetooth Classic device.
     BtClassic,
-    /// A tire-pressure sensor.
-    Tpms,
     /// An aircraft, from its 1090 MHz broadcasts (ADR-0007).
     Aircraft,
 }
@@ -113,8 +111,8 @@ pub enum Band {
     Medium,
     /// Weak.
     Weak,
-    /// No strength on a scale the bands use (none reported, TPMS's relative
-    /// scale, or an aircraft's dBFS).
+    /// No strength on a scale the bands use (none reported, or an aircraft's
+    /// dBFS).
     Unknown,
 }
 
@@ -129,8 +127,6 @@ pub enum Address {
     /// A BLE address, whose type (public or random) the events don't carry,
     /// so it isn't looked up.
     Ble,
-    /// Not an address (a TPMS sensor ID).
-    NotAnAddress,
     /// An aircraft's 24-bit address, which no vendor registry covers.
     Aircraft,
 }
@@ -429,8 +425,6 @@ pub struct KindCounts {
     pub ble: u64,
     /// Bluetooth Classic devices.
     pub bt_classic: u64,
-    /// Tire-pressure sensors.
-    pub tpms: u64,
     /// Aircraft; left out of the line when there are none.
     #[serde(skip_serializing_if = "is_zero")]
     pub aircraft: u64,
@@ -448,7 +442,6 @@ impl KindCounts {
             EmitterKind::Station => &mut self.station,
             EmitterKind::Ble => &mut self.ble,
             EmitterKind::BtClassic => &mut self.bt_classic,
-            EmitterKind::Tpms => &mut self.tpms,
             EmitterKind::Aircraft => &mut self.aircraft,
         };
         *count += 1;
@@ -656,10 +649,7 @@ fn flock_category(track: &Track) -> Option<Category> {
         _ => is_flock_softap(ssid).then_some("flock-softap"),
     });
     let block = matches!(track.kind, EmitterKind::AccessPoint | EmitterKind::Station)
-        && track
-            .addr
-            .as_deref()
-            .is_some_and(|a| a.starts_with("b4:1e:52:"));
+        && track.addr.starts_with("b4:1e:52:");
     let company = track.company_ids.binary_search(&0x09c8).is_ok();
     let entry = named
         .or(block.then_some("flock-oui"))
@@ -693,8 +683,7 @@ fn axon_category(track: &Track) -> Option<Category> {
     let block = matches!(track.kind, EmitterKind::Ble)
         && track
             .addr
-            .as_deref()
-            .and_then(|a| a.get(..9))
+            .get(..9)
             .is_some_and(|prefix| prefix.eq_ignore_ascii_case("00:25:df:"));
     block.then_some(Category {
         category: "axon-class",
@@ -909,27 +898,22 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 
 /// What a sighting says before it's folded: the emitter's kind, its
 /// strength, and its address; `None` for a fix or an event without a device.
-fn sighting(kind: &EventKind) -> Option<(EmitterKind, Option<f32>, Option<&String>)> {
+fn sighting(kind: &EventKind) -> Option<(EmitterKind, Option<f32>, &String)> {
     match kind {
         EventKind::WifiAp {
             bssid, rssi_dbm, ..
-        } => Some((
-            EmitterKind::AccessPoint,
-            rssi_dbm.map(f32::from),
-            Some(bssid),
-        )),
+        } => Some((EmitterKind::AccessPoint, rssi_dbm.map(f32::from), bssid)),
         EventKind::WifiClient { addr, rssi_dbm, .. } => {
-            Some((EmitterKind::Station, rssi_dbm.map(f32::from), Some(addr)))
+            Some((EmitterKind::Station, rssi_dbm.map(f32::from), addr))
         }
         EventKind::BleAdvert { addr, rssi_dbm, .. } => {
-            Some((EmitterKind::Ble, rssi_dbm.map(f32::from), Some(addr)))
+            Some((EmitterKind::Ble, rssi_dbm.map(f32::from), addr))
         }
         EventKind::BtClassic { addr, rssi_dbm, .. } => {
-            Some((EmitterKind::BtClassic, rssi_dbm.map(f32::from), Some(addr)))
+            Some((EmitterKind::BtClassic, rssi_dbm.map(f32::from), addr))
         }
-        EventKind::Tpms { rssi_dbm, .. } => Some((EmitterKind::Tpms, *rssi_dbm, None)),
         // dBFS is never placed on the dBm scale (ADR-0007 section 2).
-        EventKind::Aircraft { address, .. } => Some((EmitterKind::Aircraft, None, Some(address))),
+        EventKind::Aircraft { address, .. } => Some((EmitterKind::Aircraft, None, address)),
         EventKind::GnssFix { .. } | EventKind::Heading { .. } => None,
     }
 }
@@ -945,7 +929,7 @@ struct Track {
     last_seen_ns: TimeNs,
     sightings: u64,
     latest_dbm: Option<f32>,
-    addr: Option<String>,
+    addr: String,
     company_ids: Vec<u16>,
     tracker: Option<(Tracker, Category)>,
     security: Option<WifiSecurity>,
@@ -954,7 +938,7 @@ struct Track {
 }
 
 impl Track {
-    fn new(kind: EmitterKind, t: TimeNs, addr: Option<&String>) -> Self {
+    fn new(kind: EmitterKind, t: TimeNs, addr: &str) -> Self {
         Self {
             kind,
             ssid: None,
@@ -963,7 +947,7 @@ impl Track {
             last_seen_ns: t,
             sightings: 0,
             latest_dbm: None,
-            addr: addr.map(|a| a.to_ascii_lowercase()),
+            addr: addr.to_ascii_lowercase(),
             company_ids: Vec::new(),
             tracker: None,
             security: None,
@@ -1241,25 +1225,25 @@ fn description(
 ) -> Description {
     let recent = recent.unwrap_or_default();
     let band = match (track.kind, recent.strongest_dbm) {
-        (EmitterKind::Tpms | EmitterKind::Aircraft, _) | (_, None) => Band::Unknown,
+        (EmitterKind::Aircraft, _) | (_, None) => Band::Unknown,
         (_, Some(d)) if d >= f32::from(params.strong_dbm) => Band::Strong,
         (_, Some(d)) if d >= f32::from(params.weak_dbm) => Band::Medium,
         (_, Some(_)) => Band::Weak,
     };
-    let address = match (track.kind, &track.addr) {
-        (EmitterKind::Ble, _) => Address::Ble,
-        (EmitterKind::Aircraft, _) => Address::Aircraft,
-        (_, None) => Address::NotAnAddress,
-        (_, Some(a))
-            if u8::from_str_radix(a.get(..2).unwrap_or("00"), 16).is_ok_and(|b| b & 0x02 != 0) =>
+    let address = match track.kind {
+        EmitterKind::Ble => Address::Ble,
+        EmitterKind::Aircraft => Address::Aircraft,
+        EmitterKind::AccessPoint | EmitterKind::Station | EmitterKind::BtClassic
+            if u8::from_str_radix(track.addr.get(..2).unwrap_or("00"), 16)
+                .is_ok_and(|b| b & 0x02 != 0) =>
         {
             Address::Randomized
         }
-        (_, Some(_)) => Address::Global,
+        EmitterKind::AccessPoint | EmitterKind::Station | EmitterKind::BtClassic => Address::Global,
     };
-    let vendor = match (address, &track.addr) {
-        (Address::Global, Some(a)) => vendors.lookup(a).map(str::to_owned),
-        _ => None,
+    let vendor = match address {
+        Address::Global => vendors.lookup(&track.addr).map(str::to_owned),
+        Address::Randomized | Address::Ble | Address::Aircraft => None,
     };
     Description {
         device: device.clone(),

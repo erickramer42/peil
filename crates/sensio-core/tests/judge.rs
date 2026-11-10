@@ -3,9 +3,9 @@
 //!
 //! The drive (`fixtures/drive.jsonl`) stops four times for 130 s, 0.05 degree
 //! (about 5.6 km) apart, and once for 40 s at a traffic light. One BLE device
-//! is heard at every stop and one TPMS sensor at three; one device is heard at
-//! the first stop and on the road, one at the first stop and the light, one
-//! once, and one with no recent fix.
+//! is heard at every stop and one Bluetooth Classic device at three; one
+//! device is heard at the first stop and on the road, one at the first stop
+//! and the light, one once, and one with no recent fix.
 //!
 //! The Wi-Fi drive (`fixtures/drive_wifi.jsonl`) makes the same four stops with
 //! two receivers, the phone and the laptop: a hotspot both of them see stays
@@ -315,6 +315,17 @@ fn unknown_kind_is_rejected_without_quoting_it() {
         "the schema's kinds stay: {err}"
     );
     assert!(!err.contains("zz_unknown_kind"), "{err}");
+}
+
+#[test]
+fn a_tire_pressure_line_is_an_unknown_kind() {
+    // Tire-pressure sensors are not pursued (ADR-0001 section 1 as amended).
+    let input =
+        r#"{"t_ns":1,"source":"rtl_433","kind":"tpms","sensor_id":"0a1b2c3d","rssi_dbm":-12.5}"#;
+    let err = parse_jsonl(Cursor::new(input)).unwrap_err().to_string();
+    assert!(err.starts_with("line 1, column "), "{err}");
+    assert!(err.contains("unknown variant (value left out)"), "{err}");
+    assert!(!err.contains("`tpms`"), "no kind of that name: {err}");
 }
 
 #[test]

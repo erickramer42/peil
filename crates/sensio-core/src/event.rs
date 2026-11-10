@@ -64,13 +64,6 @@ pub enum EventKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         device_class: Option<u32>,
     },
-    /// A tire-pressure sensor's transmission.
-    Tpms {
-        /// The sensor's ID as the decoder reported it.
-        sensor_id: String,
-        /// Received signal strength, if the decoder gave one.
-        rssi_dbm: Option<f32>,
-    },
     /// A Wi-Fi access point, from its beacons or a scan result.
     WifiAp {
         /// The access point's address (BSSID).
@@ -225,7 +218,7 @@ pub enum WifiProtocol {
 
 /// A device the judge tracks: one per transmitter identity a source reports.
 ///
-/// The prefix names the radio, so a BLE address and a TPMS ID never collide.
+/// The prefix names the radio, so a BLE address and a Wi-Fi address never collide.
 /// Wi-Fi access points and stations share `wifi:`: a BSSID and a station's
 /// address come from one address space, so one address is one radio in
 /// either role.
@@ -254,7 +247,6 @@ impl EventKind {
         match self {
             Self::BleAdvert { .. } => "ble_advert",
             Self::BtClassic { .. } => "bt_classic",
-            Self::Tpms { .. } => "tpms",
             Self::WifiAp { .. } => "wifi_ap",
             Self::WifiClient { .. } => "wifi_client",
             Self::GnssFix { .. } => "gnss_fix",
@@ -272,9 +264,6 @@ impl EventKind {
             }
             Self::BtClassic { addr, .. } => {
                 Some(DeviceId(format!("bt:{}", addr.to_ascii_lowercase())))
-            }
-            Self::Tpms { sensor_id, .. } => {
-                Some(DeviceId(format!("tpms:{}", sensor_id.to_ascii_lowercase())))
             }
             Self::WifiAp { bssid: addr, .. } | Self::WifiClient { addr, .. } => {
                 Some(DeviceId(format!("wifi:{}", addr.to_ascii_lowercase())))
@@ -538,7 +527,6 @@ fn validate_position(kind: &EventKind) -> Result<(), &'static str> {
         }
         EventKind::BleAdvert { .. }
         | EventKind::BtClassic { .. }
-        | EventKind::Tpms { .. }
         | EventKind::WifiAp { .. }
         | EventKind::WifiClient { .. }
         | EventKind::Aircraft { .. } => {}
@@ -679,17 +667,6 @@ fn validate(event: &Event) -> Result<(), &'static str> {
             }
             if device_class.is_some_and(|c| c > 0x00ff_ffff) {
                 return Err("Bluetooth Class of Device is more than 24 bits");
-            }
-        }
-        EventKind::Tpms {
-            sensor_id,
-            rssi_dbm,
-        } => {
-            if sensor_id.is_empty() {
-                return Err("empty TPMS sensor ID");
-            }
-            if rssi_dbm.is_some_and(|r| !r.is_finite()) {
-                return Err("TPMS RSSI not finite");
             }
         }
         EventKind::WifiAp {

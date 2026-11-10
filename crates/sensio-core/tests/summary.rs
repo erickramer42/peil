@@ -52,12 +52,12 @@ fn the_drive_summarizes_to_its_stops_route_and_verdicts() {
         .collect();
     assert_eq!(
         flagged,
-        [("ble:aa:aa:aa:00:00:01", 4), ("tpms:0a1b2c3d", 3)]
+        [("ble:aa:aa:aa:00:00:01", 4), ("bt:dd:dd:dd:00:00:06", 3)]
     );
     // Each verdict's device comes described, though it wasn't heard lately.
     assert!(s.verdicts.iter().all(|f| f.described.is_some()));
     // Every emitter of the session counts, not only the last minute's.
-    assert_eq!((s.emitters.ble, s.emitters.tpms), (5, 1));
+    assert_eq!((s.emitters.ble, s.emitters.bt_classic), (5, 1));
 }
 
 #[test]

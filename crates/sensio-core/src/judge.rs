@@ -294,7 +294,6 @@ fn judged_device(kind: &EventKind) -> Option<DeviceId> {
     match kind {
         EventKind::BleAdvert { .. }
         | EventKind::BtClassic { .. }
-        | EventKind::Tpms { .. }
         | EventKind::WifiAp { .. }
         | EventKind::WifiClient { .. } => kind.device(),
         EventKind::GnssFix { .. } | EventKind::Heading { .. } | EventKind::Aircraft { .. } => None,
