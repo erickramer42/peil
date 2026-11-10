@@ -22,6 +22,8 @@ Amended 2026-11-07: the question is two, the first leading: what is transmitting
 1. **Peil captures nothing itself.** Kismet, rtl_433 and gpsd are the sensor tier. Peil reads their output as a separate process: HTTP and websockets for Kismet, a pipe for rtl_433, a TCP socket for gpsd.
 
    Amended 2026-11-06: on an Android phone the sensor tier is the operating system itself; the app reads Android's scan results and sensor readings and captures nothing below those interfaces (ADR-0004 section 3). Havne's `havne-cli`, for the vehicle's own data, is read the same way as the other programs: its JSON lines through a pipe.
+
+   Amended 2026-11-09: tire-pressure sensors are not pursued. rtl_433 stays the sub-GHz program Peil would read across the boundary, with no device class scheduled; the TPMS examples in the context and in section 6 date from before this.
 2. **Peil links none of their code.** The boundary is a process boundary, so Peil's own code stays under MIT while Kismet and rtl_433 stay under the GPL. Peil doesn't ship them; a user installs them. If a future package bundles them, it meets their licenses for those programs (source offer, license texts) and records that in THIRD_PARTY_NOTICES.md.
 
    Amended 2026-11-07: Peil's own code is under MIT or Apache-2.0, at the recipient's option, as is the convention for Rust crates; Apache-2.0 adds an express patent license from each contributor. The MIT option keeps Peil usable wherever MIT alone was, and the process boundary to the GPL programs is unchanged.

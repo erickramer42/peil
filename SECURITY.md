@@ -1,6 +1,6 @@
 # Security policy
 
-Peil reads input that strangers control: every BLE advertisement, tire-pressure transmission and Wi-Fi frame a sensor picks up was sent by someone else, and some of it may be built to break the program reading it. Its recordings and verdicts also hold other people's device identifiers and the user's own movements. A flaw in either is a security problem, and reports are welcome.
+Peil reads input that strangers control: every BLE advertisement and Wi-Fi frame a sensor picks up was sent by someone else, and some of it may be built to break the program reading it. Its recordings and verdicts also hold other people's device identifiers and the user's own movements. A flaw in either is a security problem, and reports are welcome.
 
 ## Supported versions
 
@@ -16,7 +16,7 @@ Include:
 - what an attacker controls (a radio transmission, a sensor program's output, a file of events, a command-line argument),
 - the smallest input that shows the problem, and what happens: a crash, a hang, memory use without bound, a wrong verdict, or data that should have stayed private.
 
-**Keep reports free of real personal data.** Don't attach a real recording or real device identifiers, positions or timestamps, even redacted. Rebuild the input from synthetic values instead, the way Peil's own test fixtures are written: BLE addresses whose first three octets repeat one byte (`aa:aa:aa:00:00:01`), made-up tire-pressure sensor IDs (`0a1b2c3d`), coordinates with two decimals at most, and timestamps such as `1800000000000000000`.
+**Keep reports free of real personal data.** Don't attach a real recording or real device identifiers, positions or timestamps, even redacted. Rebuild the input from synthetic values instead, the way Peil's own test fixtures are written: BLE addresses whose first three octets repeat one byte (`aa:aa:aa:00:00:01`), coordinates with two decimals at most, and timestamps such as `1800000000000000000`.
 
 Reports are read as they arrive. There is no fixed response time, but you'll get an answer, and a confirmed problem gets a fix, an advisory and credit if you want it. Please keep the details private until the advisory is published.
 
