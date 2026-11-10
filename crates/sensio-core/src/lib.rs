@@ -10,6 +10,7 @@
 pub mod describe;
 pub mod event;
 pub mod feed;
+pub mod find;
 pub mod geo;
 pub mod judge;
 pub mod live;
@@ -21,6 +22,7 @@ pub use describe::{
     DESCRIBE_VERSION, DescribeParams, OwnAddresses, Picture, VendorTable, describe,
 };
 pub use event::{DeviceId, Event, EventKind, ParseError, TimeNs, parse_jsonl};
+pub use find::{FIND_VERSION, FindAnswer, FindParams, find};
 pub use judge::{PersistenceRule, Place, RULE_SET_VERSION, Verdict, judge};
 pub use live::{Fatal, LATENESS_NS, Live, Normalize, RunError, run, summarize};
 pub use summary::{SUMMARY_SCHEMA, Summary};
