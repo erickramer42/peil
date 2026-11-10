@@ -103,6 +103,12 @@ struct LinkArgs {
     /// user's configuration directory].
     #[arg(long)]
     pairing: Option<PathBuf>,
+    /// One of this computer's own radio addresses, `wifi:ADDRESS` or
+    /// `bluetooth:ADDRESS`, beside those read from /sys on Linux; repeatable.
+    /// The app labels the emitter with it and offers it in the Mine list; it
+    /// is never left out of the verdicts.
+    #[arg(long, value_parser = link::parse_own)]
+    own: Vec<link::OwnAddress>,
 }
 
 /// Reads the vendor registry given, or takes the snapshot built into the core.
@@ -370,6 +376,29 @@ fn save_pairing(path: &std::path::Path, pairing: &link::Pairing) -> Result<()> {
     std::fs::rename(&temporary, path).with_context(|| format!("writing {}", path.display()))
 }
 
+/// This computer's own radio addresses: those in /sys and those given, each
+/// once, with their count by radio on stderr.
+fn own_addresses(given: &[link::OwnAddress]) -> Result<Vec<link::OwnAddress>> {
+    let mut own = link::own_from_sysfs(std::path::Path::new("/sys"));
+    own.extend(given.iter().cloned());
+    own.sort();
+    own.dedup();
+    if own.len() > link::MAX_OWN {
+        return Err(anyhow!(
+            "{} own addresses; the link carries at most {}",
+            own.len(),
+            link::MAX_OWN
+        ));
+    }
+    let count = |radio| own.iter().filter(|o| o.radio == radio).count();
+    eprintln!(
+        "this computer's own addresses: {} Wi-Fi, {} Bluetooth",
+        count(link::OwnRadio::Wifi),
+        count(link::OwnRadio::Bluetooth)
+    );
+    Ok(own)
+}
+
 /// Link sessions, one after another with a backoff, until a refusal.
 fn link_until_stopped(args: &LinkArgs) -> Result<ExitCode> {
     let pairing_path = match &args.pairing {
@@ -405,6 +434,7 @@ fn link_until_stopped(args: &LinkArgs) -> Result<ExitCode> {
             "--receiver must be 1 to 32 characters of a-z, 0-9, '-', '_' or '.'"
         ));
     }
+    let own = own_addresses(&args.own)?;
     let (phone, kismet, poll_ms) = (args.phone.as_deref(), args.kismet.as_str(), args.poll_ms);
     let api_key = kismet_api_key()?;
     let poll_every = Duration::from_millis(poll_ms);
@@ -421,6 +451,7 @@ fn link_until_stopped(args: &LinkArgs) -> Result<ExitCode> {
                 auth: auth.clone(),
                 receiver: receiver.clone(),
                 app: format!("peil {}", env!("CARGO_PKG_VERSION")),
+                own: own.clone(),
                 poll_every,
             };
             let mut poller = Poller::new(kismet, api_key.clone(), window_s);

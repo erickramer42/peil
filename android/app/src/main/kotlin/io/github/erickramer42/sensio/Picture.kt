@@ -21,6 +21,8 @@ class Emitter(
     val firstSeenNs: Long = 0,
     /** The table entry behind [category], which names an advert's device where its format does. */
     val categoryEntry: String? = null,
+    /** The receiver that gave this address as its own; a label only, since another device can copy an address. */
+    val own: String? = null,
 )
 
 /** The core's ambient texture: emitters in the recent window by kind, those first seen in it, and the newest. */
@@ -106,6 +108,7 @@ object VerdictStream {
                 category = e.optJSONObject("category")?.optString("category"),
                 firstSeenNs = e.optLong("first_seen_ns"),
                 categoryEntry = e.optJSONObject("category")?.optString("entry")?.ifEmpty { null },
+                own = e.text("own"),
             )
         }
         val recentNs = o.optLong("recent_ns")
@@ -192,6 +195,9 @@ object Live {
     /** The laptop link's state, or null when it's off. */
     @Volatile var link: String? = null
         private set
+    /** Each device a linked receiver gave as its own, with that receiver: offered in the Mine list, unchecked. */
+    @Volatile var own: Map<String, String> = emptyMap()
+        private set
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = mutableListOf<() -> Unit>()
@@ -214,9 +220,16 @@ object Live {
         notifyListeners()
     }
 
+    /** [receiver]'s own devices, replacing those it gave before. */
+    fun own(receiver: String, devices: List<String>) {
+        own = own.filterValues { it != receiver } + devices.associateWith { receiver }
+        notifyListeners()
+    }
+
     fun clear() {
         picture = null
         coverage = null
+        own = emptyMap()
     }
 
     private fun notifyListeners() {

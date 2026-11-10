@@ -53,6 +53,32 @@ object LinkProtocol {
         else -> null
     }
 
+    /** The most own addresses a hello carries, as the core's `MAX_OWN`. */
+    const val MAX_OWN = 16
+
+    private val MAC = Regex("[0-9a-f]{2}(:[0-9a-f]{2}){5}")
+
+    /** Six octets of hex with colons, lowercased, or null; all zeros is none. */
+    fun macAddress(text: String): String? = text.lowercase().takeIf { it.matches(MAC) && it != "00:00:00:00:00:00" }
+
+    /**
+     * The laptop's own radio addresses from its hello's `own`, as (radio,
+     * address): `wifi` or `bluetooth`, and [macAddress]. A bad entry or a
+     * repeat is dropped, and at most [MAX_OWN] are kept. They label emitters
+     * and are offered in the Mine list unchecked; they hide nothing by
+     * themselves, since anything copying the address would be hidden too.
+     */
+    fun own(entries: List<Pair<String?, String?>>): List<Pair<String, String>> =
+        entries.mapNotNull { (radio, address) ->
+            val mac = address?.let(::macAddress)
+            if (mac != null && (radio == "wifi" || radio == "bluetooth")) radio to mac else null
+        }.distinct().take(MAX_OWN)
+
+    /** The devices own addresses are, as the core names them: `wifi:`, and `bt:` and `ble:` for Bluetooth. */
+    fun ownDevices(own: List<Pair<String, String>>): List<String> = own.flatMap { (radio, address) ->
+        if (radio == "wifi") listOf("wifi:$address") else listOf("bt:$address", "ble:$address")
+    }
+
     /** A new pairing's shared secret: 32 random bytes. */
     fun newSecret(random: SecureRandom = SecureRandom()): ByteArray = ByteArray(32).also { random.nextBytes(it) }
 
@@ -135,6 +161,8 @@ class Link(
     private val offset: (receiver: String, offsetNs: Long, uncertaintyNs: Long) -> Unit,
     /** The link to [receiver] came up, or went down; the session writes it as a `radio` line. */
     private val linked: (receiver: String, up: Boolean) -> Unit,
+    /** The laptop's own addresses ([LinkProtocol.own]), once a link is up, after [linked]. */
+    private val own: (receiver: String, addresses: List<Pair<String, String>>) -> Unit = { _, _ -> },
 ) {
     private var code = ""
     private var on = false
@@ -253,6 +281,15 @@ class Link(
         }
         Live.link("Laptop: linked ($receiver)")
         linked(receiver, true)
+        // Read only once the laptop is let in: the hello comes before it proves anything.
+        val listed = hello.optJSONArray("own")
+        val addresses = LinkProtocol.own(
+            (0 until minOf(listed?.length() ?: 0, 4 * LinkProtocol.MAX_OWN)).map { i ->
+                listed!!.optJSONObject(i).let { it?.text("radio") to it?.text("address") }
+            },
+        )
+        Live.own(receiver, LinkProtocol.ownDevices(addresses))
+        own(receiver, addresses)
         socket.soTimeout = SILENT_MS
 
         val pings = ConcurrentHashMap<Long, Long>()

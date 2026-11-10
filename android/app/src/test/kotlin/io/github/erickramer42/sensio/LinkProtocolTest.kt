@@ -91,6 +91,36 @@ class LinkProtocolTest {
     }
 
     @Test
+    fun ownAddressesKeepWellFormedEntriesLowercasedOnceEach() {
+        // As the core's link tests write them.
+        val own = LinkProtocol.own(
+            listOf(
+                "wifi" to "AA:BB:CC:DD:EE:FF",
+                "bluetooth" to "aa:aa:aa:00:00:01",
+                "wifi" to "aa:bb:cc:dd:ee:ff",
+                "ble" to "aa:aa:aa:00:00:02",
+                null to "aa:aa:aa:00:00:03",
+                "wifi" to null,
+                "wifi" to "aa:bb:cc:dd:ee",
+                "wifi" to "aa:bb:cc:dd:ee:+f",
+                "wifi" to "aabb.ccdd.eeff",
+                "wifi" to "00:00:00:00:00:00",
+            ),
+        )
+        assertEquals(listOf("wifi" to "aa:bb:cc:dd:ee:ff", "bluetooth" to "aa:aa:aa:00:00:01"), own)
+        assertEquals(
+            listOf("wifi:aa:bb:cc:dd:ee:ff", "bt:aa:aa:aa:00:00:01", "ble:aa:aa:aa:00:00:01"),
+            LinkProtocol.ownDevices(own),
+        )
+    }
+
+    @Test
+    fun atMostSixteenOwnAddressesAreKept() {
+        val many = (1..40).map { "wifi" to "aa:aa:aa:00:00:%02x".format(it) }
+        assertEquals(LinkProtocol.MAX_OWN, LinkProtocol.own(many).size)
+    }
+
+    @Test
     fun thePhonesLinesAreTheOnesTheLaptopReads() {
         assertEquals("""{"type":"welcome"}""", LinkProtocol.welcome())
         assertEquals(

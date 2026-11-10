@@ -9,7 +9,9 @@ use std::thread;
 use std::time::Duration;
 
 use sensio_sources::kismet_poll::{PollError, Poller};
-use sensio_sources::link::{self, Auth, Config, LinkError, LinkLine, Pairing};
+use sensio_sources::link::{
+    self, Auth, Config, LinkError, LinkLine, OwnAddress, OwnRadio, Pairing,
+};
 use serde_json::{Value, json};
 
 const NOW_NS: i64 = 1_800_000_000_000_000_000;
@@ -128,7 +130,15 @@ fn config(phone: SocketAddr, auth: Auth) -> Config {
         auth,
         receiver: "laptop".to_owned(),
         app: "peil-test".to_owned(),
+        own: vec![own_wifi()],
         poll_every: Duration::from_millis(50),
+    }
+}
+
+fn own_wifi() -> OwnAddress {
+    OwnAddress {
+        radio: OwnRadio::Wifi,
+        address: "aa:bb:cc:dd:ee:ff".to_owned(),
     }
 }
 
@@ -201,6 +211,7 @@ fn a_session_says_hello_answers_pings_and_sends_kismets_records() {
             code: Some("123456".to_owned()),
             receiver: "laptop".to_owned(),
             app: "peil-test".to_owned(),
+            own: vec![own_wifi()],
         }
     );
     assert!(got.contains(&LinkLine::Pong {
@@ -303,6 +314,93 @@ fn the_lines_the_app_writes_are_the_ones_the_laptop_reads() {
 }
 
 #[test]
+fn the_hello_carries_own_addresses_as_the_app_reads_them_and_none_when_empty() {
+    // As the app's LinkProtocolTest reads them.
+    let hello = |own| LinkLine::Hello {
+        schema: link::SCHEMA.to_owned(),
+        code: None,
+        receiver: "laptop".to_owned(),
+        app: "sensio-test".to_owned(),
+        own,
+    };
+    let bluetooth = OwnAddress {
+        radio: OwnRadio::Bluetooth,
+        address: "aa:aa:aa:00:00:01".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_string(&hello(vec![own_wifi(), bluetooth])).expect("JSON"),
+        r#"{"type":"hello","schema":"sensio.link/1","receiver":"laptop","app":"sensio-test","own":[{"radio":"wifi","address":"aa:bb:cc:dd:ee:ff"},{"radio":"bluetooth","address":"aa:aa:aa:00:00:01"}]}"#
+    );
+    let none = serde_json::to_string(&hello(Vec::new())).expect("JSON");
+    assert!(!none.contains("own"), "{none}");
+    assert_eq!(
+        serde_json::from_str::<LinkLine>(&none).expect("JSON"),
+        hello(Vec::new())
+    );
+}
+
+#[test]
+fn own_addresses_are_six_hex_octets_and_say_which_radio() {
+    assert_eq!(link::parse_own("wifi:AA:BB:CC:DD:EE:FF"), Ok(own_wifi()));
+    assert_eq!(
+        link::parse_own("bluetooth:aa:aa:aa:00:00:01").map(|o| o.radio),
+        Ok(OwnRadio::Bluetooth)
+    );
+    for bad in [
+        "aa:bb:cc:dd:ee:ff",
+        "ble:aa:bb:cc:dd:ee:ff",
+        "wifi:aa:bb:cc:dd:ee",
+        "wifi:aa:bb:cc:dd:ee:fg",
+        "wifi:aa:bb:cc:dd:ee:+f",
+        "wifi:aabb.ccdd.eeff",
+        "wifi:00:00:00:00:00:00",
+    ] {
+        let reason = link::parse_own(bad).expect_err(bad);
+        assert!(
+            !reason.contains("aa"),
+            "the reason quotes the text: {reason}"
+        );
+    }
+}
+
+#[test]
+fn sysfs_gives_the_wireless_interfaces_and_bluetooth_controllers() {
+    let sys = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("own-sysfs");
+    let _ = std::fs::remove_dir_all(&sys);
+    let write = |path: &str, text: &str| {
+        let path = sys.join(path);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
+        std::fs::write(path, text).expect("write");
+    };
+    write("class/net/wlan0/address", "AA:BB:CC:DD:EE:FF\n");
+    write("class/net/wlan0/phy80211/name", "phy0\n");
+    write("class/net/wlan0mon/address", "aa:bb:cc:dd:ee:ff\n");
+    write("class/net/wlan0mon/wireless/x", "");
+    write("class/net/eth0/address", "bb:bb:bb:00:00:01\n");
+    write("class/net/lo/address", "00:00:00:00:00:00\n");
+    write("class/net/lo/wireless/x", "");
+    write("class/bluetooth/hci0/address", "aa:aa:aa:00:00:01\n");
+    if cfg!(unix) {
+        // A connection under its controller; Windows can't name a directory so.
+        write("class/bluetooth/hci0:11/address", "cc:cc:cc:00:00:01\n");
+    }
+    write("class/bluetooth/hci1/name", "no address shown\n");
+
+    assert_eq!(
+        link::own_from_sysfs(&sys),
+        [
+            own_wifi(),
+            OwnAddress {
+                radio: OwnRadio::Bluetooth,
+                address: "aa:aa:aa:00:00:01".to_owned(),
+            },
+        ],
+        "the wired card, the zero address and a connection are left out; the monitor interface repeats wlan0"
+    );
+    assert_eq!(link::own_from_sysfs(&sys.join("absent")), []);
+}
+
+#[test]
 fn hmac_sha256_matches_rfc_4231() {
     let hex = |bytes: [u8; 32]| {
         bytes.iter().fold(String::new(), |mut out, b| {
@@ -393,6 +491,7 @@ fn a_paired_laptop_answers_the_challenge_and_sends_no_code() {
             code: None,
             receiver: "laptop".to_owned(),
             app: "peil-test".to_owned(),
+            own: vec![own_wifi()],
         },
         "the pairing's receiver name, and no code"
     );

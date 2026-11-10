@@ -45,6 +45,38 @@ class EnrolledTest {
     }
 
     @Test
+    fun aReceiversOwnAddressesComeAfterTheEnrolledHeardOrNot() {
+        val laptop = emitter("ble:aa:aa:aa:00:00:02", "strong", -42.0)
+        val labeled = Emitter("wifi:bb:bb:bb:00:00:01", "station", "unknown", null, null, 1, "wifi", null, null, null, null, null, own = "laptop")
+        val offer = Enrolled.offer(
+            picture(loud(1) + laptop + labeled),
+            setOf("ble:cc:cc:cc:00:00:01"),
+            own = mapOf("ble:aa:aa:aa:00:00:02" to "laptop", "bt:aa:aa:aa:00:00:02" to "laptop"),
+        )
+        assertEquals(
+            "each once, the unheard one too",
+            listOf(
+                "ble:cc:cc:cc:00:00:01",
+                "ble:aa:aa:aa:00:00:02",
+                "bt:aa:aa:aa:00:00:02",
+                "wifi:bb:bb:bb:00:00:01",
+                "ble:aa:aa:aa:00:00:01",
+            ),
+            offer.map { it.second },
+        )
+        assertEquals("laptop", Enrolled.ownOf("wifi:bb:bb:bb:00:00:01", labeled, emptyMap()))
+        assertEquals(null, Enrolled.ownOf("ble:aa:aa:aa:00:00:01", loud(1)[0], emptyMap()))
+    }
+
+    @Test
+    fun aReceiversOwnAddressNeverStartsChecked() {
+        val strong = emitter("ble:aa:aa:aa:00:00:01", "strong", -40.0)
+        assertFalse(Enrolled.suggested(strong, emptySet(), own = mapOf("ble:aa:aa:aa:00:00:01" to "laptop")))
+        val labeled = Emitter("ble:aa:aa:aa:00:00:01", "ble", "strong", -40.0, -40.0, 1, "ble", null, null, null, null, null, own = "laptop")
+        assertFalse(Enrolled.suggested(labeled, emptySet()))
+    }
+
+    @Test
     fun onlyStrongNonTrackersStartCheckedAndOnlyBeforeAnythingIsEnrolled() {
         val strong = emitter("ble:aa:aa:aa:00:00:01", "strong", -40.0)
         val strongTag = emitter("ble:bb:bb:bb:00:00:01", "strong", -40.0, tracker = "tile")

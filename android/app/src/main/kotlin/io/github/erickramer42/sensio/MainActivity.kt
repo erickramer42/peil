@@ -202,6 +202,7 @@ class MainActivity : Activity() {
     private fun line(e: Emitter): String {
         val dbm = e.latestDbm?.let { "%4.0f".format(it) } ?: "   ?"
         val what = listOfNotNull(
+            e.own?.let { "$it's own" },
             Labels.tracker(e),
             e.category,
             e.ssid?.let { "\"$it\"" },
@@ -306,19 +307,21 @@ class MainActivity : Activity() {
     /** The user picks their own emitters; the loudest are offered first. */
     private fun chooseMine() {
         val enrolled = Enrolled.devices(this)
-        val offer = Enrolled.offer(Live.picture, enrolled)
+        val own = Live.own
+        val offer = Enrolled.offer(Live.picture, enrolled, own)
         if (offer.isEmpty()) {
             status.text = "Start a session first: the emitters it hears are offered here, loudest first."
             return
         }
         val labels = offer.map { (e, device) ->
-            when {
+            val label = when {
                 e == null -> "${device.substringAfter(':')} (not heard in the last minute)"
                 e.tracker != null -> "TRACKER " + oneLine(line(e))
                 else -> oneLine(line(e))
             }
+            Enrolled.ownOf(device, e, own)?.let { "${it.uppercase()}'S OWN $label" } ?: label
         }
-        val checked = offer.map { (e, device) -> device in enrolled || Enrolled.suggested(e, enrolled) }.toBooleanArray()
+        val checked = offer.map { (e, device) -> device in enrolled || Enrolled.suggested(e, enrolled, own) }.toBooleanArray()
         Ui.checks(this, "Which are yours?", labels, checked) { picked ->
             Enrolled.set(this, offer.indices.filter { picked[it] }.map { offer[it].second }.toSet())
             show()

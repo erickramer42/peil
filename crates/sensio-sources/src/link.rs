@@ -3,7 +3,8 @@
 //! `sensio.link/1`, each with its `type`.
 //!
 //! - The laptop opens with `hello`: the schema, the receiver's name
-//!   (`laptop`), its version, and, to pair, the code the app shows.
+//!   (`laptop`), its version, its own radio addresses ([`OwnAddress`]), and,
+//!   to pair, the code the app shows.
 //! - To a code, the phone answers `welcome` with a new shared secret, which
 //!   the laptop keeps ([`Pairing`]). Without a code, the phone sends a
 //!   `challenge` with a fresh nonce and the laptop answers with a `proof`,
@@ -54,6 +55,10 @@ pub enum LinkLine {
         receiver: String,
         /// The laptop program and its version.
         app: String,
+        /// The receiver's own radio addresses, at most [`MAX_OWN`], for the
+        /// app to label and offer in its Mine list; none when it knows none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        own: Vec<OwnAddress>,
     },
     /// The phone asks a paired laptop to prove it holds the secret.
     Challenge {
@@ -102,6 +107,111 @@ pub enum LinkLine {
         /// What changed, with no values from a radio.
         text: String,
     },
+}
+
+/// The most own addresses a hello carries.
+pub const MAX_OWN: usize = 16;
+
+/// Which radio an own address belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnRadio {
+    /// A Wi-Fi interface: the device `wifi:<address>`.
+    Wifi,
+    /// A Bluetooth controller: the devices `bt:<address>` and `ble:<address>`.
+    Bluetooth,
+}
+
+/// One of the receiver's own radio addresses. It labels the emitter with that
+/// address and never takes it out of the judge's view: anything that copies
+/// the address carries the label too, and its verdicts still fire.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct OwnAddress {
+    /// Its radio.
+    pub radio: OwnRadio,
+    /// Six octets of lowercase hex, colon-separated.
+    pub address: String,
+}
+
+/// The address in the form an own address carries (six octets of lowercase
+/// hex, colon-separated), or `None` if it isn't one or is all zeros.
+#[must_use]
+pub fn mac_address(text: &str) -> Option<String> {
+    let text = text.trim();
+    let octets: Vec<&str> = text.split(':').collect();
+    let well_formed = octets.len() == 6
+        && octets
+            .iter()
+            .all(|o| o.len() == 2 && o.bytes().all(|b| b.is_ascii_hexdigit()));
+    let address = text.to_ascii_lowercase();
+    (well_formed && address != "00:00:00:00:00:00").then_some(address)
+}
+
+/// An own address as `--own` takes it: `wifi:ADDRESS` or `bluetooth:ADDRESS`.
+///
+/// # Errors
+///
+/// A message saying what's expected, with none of the text given.
+pub fn parse_own(text: &str) -> Result<OwnAddress, String> {
+    let expected = || "expected wifi:ADDRESS or bluetooth:ADDRESS".to_owned();
+    let (radio, address) = text.split_once(':').ok_or_else(expected)?;
+    let radio = match radio {
+        "wifi" => OwnRadio::Wifi,
+        "bluetooth" => OwnRadio::Bluetooth,
+        _ => return Err(expected()),
+    };
+    let address = mac_address(address)
+        .ok_or_else(|| "the address isn't six hex octets separated by ':'".to_owned())?;
+    Ok(OwnAddress { radio, address })
+}
+
+/// This computer's own radio addresses from Linux's sysfs under `sys`
+/// (`/sys`): each wireless interface's in `class/net`, each Bluetooth
+/// controller's in `class/bluetooth` where the kernel shows one. Sorted, with
+/// no repeats; none where sysfs isn't there.
+#[must_use]
+pub fn own_from_sysfs(sys: &std::path::Path) -> Vec<OwnAddress> {
+    let read = |path: std::path::PathBuf| -> Option<String> {
+        use std::io::Read as _;
+        let mut text = String::new();
+        std::fs::File::open(path)
+            .ok()?
+            .take(64)
+            .read_to_string(&mut text)
+            .ok()?;
+        mac_address(&text)
+    };
+    let entries = |dir: std::path::PathBuf| {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+    };
+    let mut own: Vec<OwnAddress> = entries(sys.join("class/net"))
+        .filter(|path| path.join("wireless").exists() || path.join("phy80211").exists())
+        .filter_map(|path| read(path.join("address")))
+        .map(|address| OwnAddress {
+            radio: OwnRadio::Wifi,
+            address,
+        })
+        .chain(
+            entries(sys.join("class/bluetooth"))
+                .filter(|path| {
+                    path.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with("hci") && !n.contains(':'))
+                })
+                .filter_map(|path| read(path.join("address")))
+                .map(|address| OwnAddress {
+                    radio: OwnRadio::Bluetooth,
+                    address,
+                }),
+        )
+        .collect();
+    own.sort();
+    own.dedup();
+    own
 }
 
 /// Why a link session ended.
@@ -202,6 +312,9 @@ pub struct Config {
     pub receiver: String,
     /// This program and its version.
     pub app: String,
+    /// This laptop's own radio addresses; the hello carries the first
+    /// [`MAX_OWN`].
+    pub own: Vec<OwnAddress>,
     /// How often to poll Kismet.
     pub poll_every: Duration,
 }
@@ -276,6 +389,7 @@ fn hello(
             },
             receiver: receiver.clone(),
             app: config.app.clone(),
+            own: config.own.iter().take(MAX_OWN).cloned().collect(),
         },
     )?;
     let unexpected = || LinkError::Closed("the phone didn't answer the hello".to_owned());

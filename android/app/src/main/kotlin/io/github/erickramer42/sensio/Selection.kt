@@ -45,6 +45,7 @@ object Selection {
         e.category?.let { add("Category: $it") }
         e.security?.let { add("Security: $it") }
         if (e.address == "randomized") add("Address: randomized")
+        e.own?.let { add("Own address of: $it (as it reported over the link)") }
         val heard = "Heard ${e.sightings} time${if (e.sightings == 1L) "" else "s"}"
         add(if (e.firstSeenNs in 1..atNs) "$heard, first ${ago(atNs - e.firstSeenNs)} ago" else heard)
     }
