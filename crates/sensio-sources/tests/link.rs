@@ -298,7 +298,7 @@ fn a_session_sends_readsbs_aircraft_whether_kismet_answers_or_not() {
         .collect();
     assert_eq!(aircraft.len(), 3);
     assert!(
-        aircraft[0].0.contains(r#""hex":"aaaa01""#),
+        aircraft[0].0.contains(r#""hex":"bbbb01""#),
         "{}",
         aircraft[0].0
     );

@@ -23,6 +23,8 @@ ureq = { version = "3.5", default-features = false }
 # The laptop link's pairing proof: HMAC-SHA256, with HMAC written out in
 # link.rs (the hmac crate pulls in subtle, BSD-3-Clause).
 sha2 = "0.10"
+# Raw deflate, for the bundled aircraft registry's blocks.
+miniz_oxide = "0.8"
 insta = { version = "1", features = ["json"] }
 proptest = "1"
 

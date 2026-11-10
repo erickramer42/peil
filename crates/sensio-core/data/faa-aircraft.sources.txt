@@ -1,0 +1,7 @@
+The FAA's releasable aircraft database, https://registry.faa.gov/database/ReleasableAircraft.zip, its files dated 2026-11-06,
+cut by packaging/faa_registry.py to each aircraft's Mode S address, N-number, make and
+model, year, aircraft and engine type and registrant type, with the registrant's name
+for organizations only. Field codes from the FAA's ardata.pdf (dated 5/8/2025).
+
+ReleasableAircraft.zip: sha256 01cd75d88d3ac779e01262fd329c6f4e848d86acacf1df673ff279deffae1fdd
+    318637 aircraft, 156937 with an organization's name; 4358257 bytes

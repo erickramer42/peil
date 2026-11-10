@@ -7,6 +7,7 @@
 //! (ADR-0001, ADR-0002). The live judge ([`live::Live`]) answers each request
 //! in a feed with the judge over the events before it (ADR-0005).
 
+pub mod aircraft_registry;
 pub mod describe;
 pub mod event;
 pub mod feed;
@@ -19,6 +20,7 @@ mod rate;
 mod remote_id;
 pub mod summary;
 
+pub use aircraft_registry::AircraftRegistry;
 pub use describe::{
     DESCRIBE_VERSION, DescribeParams, OwnAddresses, Picture, VendorTable, describe,
 };

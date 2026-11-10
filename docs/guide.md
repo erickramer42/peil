@@ -39,7 +39,7 @@ The pairing is kept (`peil/link-pairing.json` in your configuration directory), 
 
 `peil link` polls Kismet's device list and sends each device seen again, cut down to the fields the core reads. It answers the phone's pings with its clock, so the phone places the laptop's times on its own, and it reconnects when the link drops. The laptop's devices join the picture under its receiver name.
 
-With readsb on the laptop (writing its aircraft list with `--write-json`), `peil link` sends its aircraft too, read from `/run/readsb/aircraft.json` unless `--readsb` names another path; `--no-readsb` sends none. Aircraft aren't in the picture yet ([ADR-0007](adr/0007-aircraft-and-drones.md)).
+With readsb on the laptop (writing its aircraft list with `--write-json`), `peil link` sends its aircraft too, read from `/run/readsb/aircraft.json` unless `--readsb` names another path; `--no-readsb` sends none. Each aircraft is in the picture with what it announces, its distance and bearing from the vehicle, and, for an address in the US block, its registration from the FAA snapshot the core carries; the app lists aircraft but gives them no slice of the ring yet ([ADR-0007](adr/0007-aircraft-and-drones.md)).
 
 Kismet hears the laptop's own radios too, so `peil link` tells the phone their addresses: each wireless interface and Bluetooth controller it finds in `/sys` on Linux, plus any you give with `--own wifi:ADDRESS` or `--own bluetooth:ADDRESS` (repeatable; for an adapter `/sys` doesn't show). The Mine list offers them first, labeled as the laptop's own and unchecked; check them to take the laptop off the ring and the list. The verdicts still include them, since a device copying the laptop's address would carry the label too.
 

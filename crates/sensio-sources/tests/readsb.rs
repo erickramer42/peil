@@ -45,7 +45,7 @@ fn the_lists_aircraft_normalize_with_their_fields() {
     else {
         panic!("not an aircraft");
     };
-    assert_eq!(address, "aaaa01");
+    assert_eq!(address, "bbbb01");
     assert_eq!(heard_as.as_deref(), Some("adsb_icao"));
     assert_eq!(callsign.as_deref(), Some("TEST01"), "the padding goes");
     assert_eq!(
@@ -93,7 +93,7 @@ fn the_lists_aircraft_normalize_with_their_fields() {
 
 #[test]
 fn a_field_of_the_wrong_shape_or_out_of_range_reads_as_absent() {
-    let raw = r#"{"hex":"AAAA01","type":"ADS B","flight":"test 01!","alt_baro":200000,"alt_geom":"high",
+    let raw = r#"{"hex":"BBBB01","type":"ADS B","flight":"test 01!","alt_baro":200000,"alt_geom":"high",
         "gs":-3,"track":360,"lat":91,"lon":10.02,"category":"E1","squawk":"7800","emergency":"mayday","rssi":3}"#;
     let EventKind::Aircraft {
         address,
@@ -114,7 +114,7 @@ fn a_field_of_the_wrong_shape_or_out_of_range_reads_as_absent() {
     else {
         panic!("not an aircraft");
     };
-    assert_eq!(address, "aaaa01", "lowercased");
+    assert_eq!(address, "bbbb01", "lowercased");
     assert_eq!(
         (
             heard_as,
@@ -136,7 +136,7 @@ fn a_field_of_the_wrong_shape_or_out_of_range_reads_as_absent() {
 #[test]
 fn a_position_older_than_ten_seconds_is_left_out() {
     let at = |seen: &str| {
-        let raw = format!(r#"{{"hex":"aaaa01","lat":60.01,"lon":10.02,"seen_pos":{seen}}}"#);
+        let raw = format!(r#"{{"hex":"bbbb01","lat":60.01,"lon":10.02,"seen_pos":{seen}}}"#);
         let EventKind::Aircraft { lat_deg, .. } = normalized(&raw) else {
             panic!("not an aircraft");
         };
@@ -154,13 +154,13 @@ fn what_has_no_usable_address_is_rejected_without_its_values() {
         "",
         "[]",
         r#"{"flight":"TEST01"}"#,
-        r#"{"hex":"aaaa0"}"#,
-        r#"{"hex":"aaaa0g"}"#,
+        r#"{"hex":"bbbb0"}"#,
+        r#"{"hex":"bbbb0g"}"#,
         r#"{"hex":7}"#,
     ] {
         let reason = Sources.normalize("readsb", raw).expect_err(raw);
         assert!(
-            !reason.contains("TEST01") && !reason.contains("aaaa0"),
+            !reason.contains("TEST01") && !reason.contains("bbbb0"),
             "{reason}"
         );
     }
@@ -183,7 +183,7 @@ fn hexes(lines: &[String]) -> Vec<String> {
 fn each_aircraft_goes_out_as_its_own_object_with_the_lists_time() {
     let mut reader = Reader::new(Path::new("unused"));
     let lines = reader.take_body(LIST.as_bytes(), CLOCK_NS).expect("a list");
-    assert_eq!(hexes(&lines), ["aaaa01", "bbbb02", "~cccc03"]);
+    assert_eq!(hexes(&lines), ["bbbb01", "bbbb02", "~cccc03"]);
     let first: Value = serde_json::from_str(&lines[0]).expect("JSON");
     assert_eq!(first["now"], 1_800_000_000.5);
     assert_eq!(first["flight"], "TEST01  ", "readsb's object as written");
@@ -209,7 +209,7 @@ fn only_aircraft_with_new_messages_go_out_again() {
     let lines = reader
         .take_body(restarted.as_bytes(), CLOCK_NS + 2_000_000_000)
         .expect("a list");
-    assert_eq!(hexes(&lines), ["aaaa01"]);
+    assert_eq!(hexes(&lines), ["bbbb01"]);
 }
 
 #[test]
@@ -236,11 +236,11 @@ fn what_isnt_an_aircraft_list_is_rejected_without_its_values() {
         r#"{"aircraft":[]}"#,
         r#"{"now":"1800000000","aircraft":[]}"#,
         r#"{"now":1800000000.5}"#,
-        r#"{"now":1800000000.5,"aircraft":{"hex":"aaaa01"}}"#,
+        r#"{"now":1800000000.5,"aircraft":{"hex":"bbbb01"}}"#,
     ] {
         match reader.take_body(bad.as_bytes(), CLOCK_NS) {
             Err(ReadError::NotAircraft(reason)) => {
-                assert!(!reason.contains("aaaa01"), "{reason}");
+                assert!(!reason.contains("bbbb01"), "{reason}");
             }
             other => panic!("{bad}: {other:?}"),
         }
@@ -251,13 +251,13 @@ fn what_isnt_an_aircraft_list_is_rejected_without_its_values() {
 fn entries_without_a_usable_address_are_skipped() {
     let mut reader = Reader::new(Path::new("unused"));
     let list = r#"{"now":1800000000.5,"aircraft":[
-        1, {"type":"mode_s"}, {"hex":""}, {"hex":"aaaaaaaaaa01"}, {"hex":7}, {"hex":"aaaa01"},
-        {"hex":"aaaa01","messages":9}
+        1, {"type":"mode_s"}, {"hex":""}, {"hex":"aaaaaabbbb01"}, {"hex":7}, {"hex":"bbbb01"},
+        {"hex":"bbbb01","messages":9}
     ]}"#;
     let lines = reader.take_body(list.as_bytes(), CLOCK_NS).expect("a list");
     assert_eq!(
         hexes(&lines),
-        ["aaaa01"],
+        ["bbbb01"],
         "an address listed twice is taken once"
     );
     let later = list.replace("1800000000.5", "1800000001.5");

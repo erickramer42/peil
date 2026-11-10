@@ -97,5 +97,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "aircraft_registry"
+path = "fuzz_targets/aircraft_registry.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

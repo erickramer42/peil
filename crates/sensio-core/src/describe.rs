@@ -12,14 +12,16 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::aircraft_registry::{AircraftRegistry, Lookup};
 use crate::event::{DeviceId, Event, EventKind, ServiceData, TimeNs, WifiSecurity};
 use crate::feed::OwnRadio;
 use crate::judge::order_key;
 use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
-/// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 8;
+/// advert formats, and the FAA registry snapshot, which nothing else can
+/// supply); it follows `RULE_SET_VERSION`'s rules.
+pub const DESCRIBE_VERSION: u32 = 9;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -282,9 +284,24 @@ pub struct AircraftState {
     /// Its latest signal strength, dBFS.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signal_dbfs: Option<f64>,
+    /// What the bundled FAA registry snapshot says about its address
+    /// (ADR-0007 section 5); absent for an address outside the US block or
+    /// one that isn't an ICAO address.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry: Option<Lookup>,
 }
 
 impl AircraftState {
+    /// A state for `address`, with its registry lookup.
+    fn registered(address: &str) -> Self {
+        Self {
+            registry: AircraftRegistry::bundled()
+                .ok()
+                .and_then(|r| r.lookup(address)),
+            ..Self::default()
+        }
+    }
+
     /// Takes the next aircraft event's fields, in the judge's order.
     fn observe(&mut self, t_ns: TimeNs, kind: &EventKind) {
         let EventKind::Aircraft {
@@ -913,6 +930,26 @@ fn adsb_category(code: &str) -> Option<Category> {
     Some(Category { category, entry })
 }
 
+/// An aircraft that announces no category, by the type it is registered as
+/// (`aircraft_registry.rs`, the FAA's `ardata.pdf` dated 5/8/2025, read
+/// 2026-11-09): the kinds the ADS-B categories above also name. A Mode S
+/// transponder announces no category, so this is what names a helicopter
+/// heard without ADS-B.
+fn registry_category(lookup: &Lookup) -> Option<Category> {
+    let Lookup::Found(registration) = lookup else {
+        return None;
+    };
+    let (category, entry) = match registration.aircraft_type? {
+        "rotorcraft" => ("rotorcraft", "faa-rotorcraft"),
+        "gyroplane" => ("rotorcraft", "faa-gyroplane"),
+        "glider" => ("glider", "faa-glider"),
+        "balloon" => ("lighter-than-air", "faa-balloon"),
+        "blimp" => ("lighter-than-air", "faa-blimp"),
+        _ => return None,
+    };
+    Some(Category { category, entry })
+}
+
 /// Whether a network's name is the camera's setup hotspot.
 fn is_flock_softap(ssid: &str) -> bool {
     ssid.strip_prefix("Flock-")
@@ -1192,9 +1229,9 @@ impl Track {
                 device_class: Some(class),
                 ..
             } => self.device_class = Some(*class),
-            EventKind::Aircraft { .. } => self
+            EventKind::Aircraft { address, .. } => self
                 .aircraft
-                .get_or_insert_with(AircraftState::default)
+                .get_or_insert_with(|| AircraftState::registered(address))
                 .observe(event.t_ns, &event.kind),
             _ => {}
         }
@@ -1472,7 +1509,8 @@ fn description(
                 .or_else(|| {
                     let state = track.aircraft.as_ref()?;
                     adsb_category(state.emitter_category.as_deref()?)
-                }),
+                })
+                .or_else(|| registry_category(track.aircraft.as_ref()?.registry.as_ref()?)),
         },
         own: None,
         aircraft: track.aircraft.as_ref().map(|a| a.seen_from(fix)),

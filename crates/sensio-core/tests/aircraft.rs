@@ -13,7 +13,7 @@ const T0: i64 = 1_800_000_000_000_000_000;
 
 fn aircraft(fields: &str) -> String {
     format!(
-        r#"{{"t_ns":{T0},"source":"readsb","receiver":"laptop","kind":"aircraft","address":"aaaa01"{fields}}}"#
+        r#"{{"t_ns":{T0},"source":"readsb","receiver":"laptop","kind":"aircraft","address":"bbbb01"{fields}}}"#
     )
 }
 
@@ -29,10 +29,10 @@ fn a_full_aircraft_event_parses_and_its_device_is_adsb() {
     .expect("parses");
     assert_eq!(
         events[0].kind.device().map(|d| d.to_string()).as_deref(),
-        Some("adsb:aaaa01")
+        Some("adsb:bbbb01")
     );
     let non_icao =
-        parse_jsonl(Cursor::new(aircraft("").replace("aaaa01", "~CCCC03"))).expect("parses");
+        parse_jsonl(Cursor::new(aircraft("").replace("bbbb01", "~CCCC03"))).expect("parses");
     assert_eq!(
         non_icao[0].kind.device().map(|d| d.to_string()).as_deref(),
         Some("adsb:~cccc03"),
@@ -43,9 +43,9 @@ fn a_full_aircraft_event_parses_and_its_device_is_adsb() {
 #[test]
 fn a_malformed_aircraft_address_is_rejected_without_quoting_it() {
     for address in [
-        "", "aaaa0", "aaaa011", "gggg01", "~~aaaa01", "aa aa01", "+aaa01",
+        "", "bbbb0", "bbbb011", "gggg01", "~~bbbb01", "aa aa01", "+aaa01",
     ] {
-        let line = aircraft("").replace(r#""aaaa01""#, &format!(r#""{address}""#));
+        let line = aircraft("").replace(r#""bbbb01""#, &format!(r#""{address}""#));
         assert_eq!(
             rejection(&line),
             "line 1: aircraft address isn't six hex digits, after a '~' for a non-ICAO one",
