@@ -17,6 +17,8 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 
 - Vendor names with no file to supply: the core carries a snapshot of the IEEE's MA-L, MA-M and MA-S lists (read 2026-11-09), so the app shows each emitter's vendor block and `peil live` and `peil describe` name it without `--vendors`, which takes a newer list instead. `packaging/vendors.py` refreshes the snapshot and records its date and each list's SHA-256 beside it.
 
+- The laptop's own radio addresses over the link: `peil link` reads its wireless interfaces and Bluetooth controllers from `/sys` (and takes more with `--own wifi:ADDRESS` or `--own bluetooth:ADDRESS`) and sends them in its hello; the app offers them in the Mine list, unchecked, and shows the label the core gives those emitters. They label and never leave a device out of the verdicts.
+
 - Coverage shows a BLE scan that reads on but gives fewer results than a full scan: each radio's results and devices over the last minute (`last_minute`), and for BLE `low_rate` (under 100 results and under 30 a device, or none, through a minute it read on) with its time low (`low_ns`). Android can make a running scan opportunistic without telling the app; the app's coverage row reads "BLE low rate".
 
 ### Changed

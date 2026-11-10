@@ -39,6 +39,8 @@ The pairing is kept (`peil/link-pairing.json` in your configuration directory), 
 
 `peil link` polls Kismet's device list and sends each device seen again, cut down to the fields the core reads. It answers the phone's pings with its clock, so the phone places the laptop's times on its own, and it reconnects when the link drops. The laptop's devices join the picture under its receiver name.
 
+Kismet hears the laptop's own radios too, so `peil link` tells the phone their addresses: each wireless interface and Bluetooth controller it finds in `/sys` on Linux, plus any you give with `--own wifi:ADDRESS` or `--own bluetooth:ADDRESS` (repeatable; for an adapter `/sys` doesn't show). The Mine list offers them first, labeled as the laptop's own and unchecked; check them to take the laptop off the ring and the list. The verdicts still include them, since a device copying the laptop's address would carry the label too.
+
 ## The `peil` command
 
 - `peil describe <events.jsonl>`: the emitter picture over a file of normalized events, loud first. Vendor names come from a snapshot of the IEEE's MA-L, MA-M and MA-S lists built into the core (its date and sources in `crates/sensio-core/data/ieee-vendors.sources.txt`); `--vendors` takes a newer copy of those lists (CSV, one or several concatenated) instead, here and on `peil live`.
