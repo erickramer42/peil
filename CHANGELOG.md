@@ -30,6 +30,7 @@ The APK is signed with one key; each release's notes and `apksigner verify --pri
 - Kismet's `Wi-Fi WDS AP` devices (an access point linking to another, which Kismet types so over `Wi-Fi AP`) are access points, and its `Wi-Fi WDS` devices (addresses carried across that link) give no event, as bridged ones don't; both were rejected lines.
 - The BLE scan restarts every 4 minutes, so Android's 5-minute scan timeout no longer turns it opportunistic and cuts the lines a minute.
 - The Mine list offers every recognized tracker whatever its strength, then the 40 loudest others, so a weak tag in a wallet can be marked without holding it to the phone.
+- The app's screen-off BLE scan keeps Tile's third UUID, 0xFD84, which the describe layer matches; a Tile advertising under it went unheard with the screen off.
 
 ## 0.1.0 - 2026-11-08
 
