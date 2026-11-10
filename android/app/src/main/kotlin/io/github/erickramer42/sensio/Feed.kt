@@ -49,6 +49,12 @@ object Feed {
     /** The session was stopped: written last, so a feed without one was cut (ADR-0005). */
     fun end(bootNs: Long) = """{"type":"end","boot_ns":$bootNs}"""
 
+    /** A receiver's own addresses, (radio, address) pairs as the link checked them (ADR-0004 section 6). */
+    fun own(bootNs: Long, receiver: String, addresses: List<Pair<String, String>>) =
+        """{"type":"own","boot_ns":$bootNs,"receiver":${quote(receiver)},"addresses":[""" +
+            addresses.joinToString(",") { (radio, address) -> """{"radio":${quote(radio)},"address":${quote(address)}}""" } +
+            "]}"
+
     /** A radio's states, as the core's `RadioState` names them. */
     enum class RadioState(val wire: String) { ON("on"), FILTERED("filtered"), OFF("off"), FAILED("failed"), UNUSED("unused") }
 

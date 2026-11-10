@@ -11,7 +11,10 @@ use std::collections::BTreeMap;
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 use sensio_core::event::is_label;
-use sensio_core::feed::{ClockBasis, EndReason, FEED_SCHEMA, FeedLine, RadioState, VerdictLine};
+use sensio_core::feed::{
+    ClockBasis, EndReason, FEED_SCHEMA, FeedLine, MAX_OWN, OwnAddress, OwnRadio, RadioState,
+    VerdictLine,
+};
 use sensio_core::{Event, EventKind, Live, TimeNs, Verdict, judge, run};
 use sensio_fuzz::{Kind, Rule, Time};
 use sensio_sources::Sources;
@@ -65,6 +68,9 @@ enum Op {
     Dropped(Option<u8>, u64),
     Slept(Time, i64),
     End(Time),
+    /// A receiver's own addresses: each a radio (Wi-Fi or Bluetooth), six
+    /// octets, and whether to cut the address short.
+    Own(Time, u8, Vec<(bool, [u8; 6], bool)>),
     Radio(Time, u8, Option<u8>, u8),
     /// Never a feed line: it starts with '#'.
     Garbage(Vec<u8>),
@@ -279,6 +285,43 @@ fuzz_target!(|session: Session| {
                 let mut line = vec![b'#'];
                 line.extend(bytes.iter().filter(|&&b| b != b'\n'));
                 line
+            }
+            Op::Own(boot, r, addresses) => {
+                let boot_ns = boot.at(&mut cursor);
+                let receiver = receiver(*r);
+                let addresses: Vec<OwnAddress> = addresses
+                    .iter()
+                    .map(|&(bluetooth, octets, short)| {
+                        let mut address = octets
+                            .iter()
+                            .map(|o| format!("{o:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(":");
+                        if short {
+                            address.truncate(14);
+                        }
+                        OwnAddress {
+                            radio: if bluetooth {
+                                OwnRadio::Bluetooth
+                            } else {
+                                OwnRadio::Wifi
+                            },
+                            address,
+                        }
+                    })
+                    .collect();
+                let bad = boot_ns < 0
+                    || !is_label(&receiver)
+                    || addresses.len() > MAX_OWN
+                    || addresses.iter().any(|a| a.address.len() != 17);
+                if bad {
+                    m.rejected += 1;
+                }
+                json(&FeedLine::Own {
+                    boot_ns,
+                    receiver,
+                    addresses,
+                })
             }
             Op::End(boot) => {
                 let boot_ns = boot.at(&mut cursor);

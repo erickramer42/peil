@@ -236,6 +236,7 @@ class SessionService : Service() {
             line = { source, receiver, remoteNs, raw -> data(raw, source, receiver, remoteNs) },
             offset = { receiver, offsetNs, uncertaintyNs -> control(Feed.offset(receiver, offsetNs, uncertaintyNs)) },
             linked = { receiver, up -> radio("link", if (up) Feed.RadioState.ON else Feed.RadioState.OFF, receiver) },
+            own = { receiver, addresses -> control(Feed.own(SystemClock.elapsedRealtimeNanos(), receiver, addresses)) },
         )
         val throttle = if (wifi.isScanThrottleEnabled) "on (4 scans per 2 minutes)" else "off"
         runningStatus = "Session running; Wi-Fi scan throttling $throttle"
@@ -447,6 +448,11 @@ class SessionService : Service() {
             runCatching { getSystemService(BluetoothManager::class.java).adapter?.cancelDiscovery() }
             runCatching { getSystemService(LocationManager::class.java).removeUpdates(locationListener) }
             synchronized(this) {
+                // Last in the feed, so a feed without it was cut. Written to
+                // the file even when the core's buffer is full.
+                val end = Feed.end(SystemClock.elapsedRealtimeNanos())
+                core?.offer(end)
+                write(end)
                 core?.close()
                 runCatching { file?.close() }
                 file = null

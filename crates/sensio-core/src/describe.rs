@@ -13,12 +13,13 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 
 use crate::event::{DeviceId, Event, EventKind, ServiceData, TimeNs, WifiSecurity};
+use crate::feed::OwnRadio;
 use crate::judge::order_key;
 use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 3;
+pub const DESCRIBE_VERSION: u32 = 4;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -211,6 +212,60 @@ pub struct Description {
     /// Its hardware category.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<Category>,
+    /// The receiver that reported its address as its own ([`OwnAddresses`]):
+    /// a label for the address, not an identity, since anything sending
+    /// that address carries it too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub own: Option<String>,
+}
+
+/// The addresses receivers reported as their own, by the device IDs they
+/// name: a Wi-Fi address as `wifi:`, a Bluetooth one as `bt:` and `ble:`
+/// (ADR-0005 and ADR-0006 as amended 2026-11-09). They label descriptions
+/// and change no verdict.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OwnAddresses {
+    /// Device ID to the receivers reporting it, in order.
+    by_device: BTreeMap<String, Vec<String>>,
+}
+
+impl OwnAddresses {
+    /// Replaces `receiver`'s addresses with `addresses`, each a radio and an
+    /// address already checked as `xx:xx:xx:xx:xx:xx`.
+    pub fn set(&mut self, receiver: &str, addresses: &[(OwnRadio, String)]) {
+        for receivers in self.by_device.values_mut() {
+            receivers.retain(|r| r != receiver);
+        }
+        self.by_device.retain(|_, receivers| !receivers.is_empty());
+        for (radio, address) in addresses {
+            let address = address.to_ascii_lowercase();
+            let prefixes: &[&str] = match radio {
+                OwnRadio::Wifi => &["wifi"],
+                OwnRadio::Bluetooth => &["bt", "ble"],
+            };
+            for prefix in prefixes {
+                let receivers = self
+                    .by_device
+                    .entry(format!("{prefix}:{address}"))
+                    .or_default();
+                if !receivers.iter().any(|r| r == receiver) {
+                    receivers.push(receiver.to_owned());
+                    receivers.sort();
+                }
+            }
+        }
+    }
+
+    /// Labels each emitter in `picture` whose device a receiver reported,
+    /// with the first such receiver by name.
+    pub fn label(&self, picture: &mut Picture) {
+        for emitter in &mut picture.emitters {
+            emitter.own = self
+                .by_device
+                .get(emitter.device.as_str())
+                .and_then(|receivers| receivers.first().cloned());
+        }
+    }
 }
 
 /// Whether the vehicle is moving, from the GNSS track.
@@ -1016,6 +1071,7 @@ fn description(
             Some((_, category)) => Some(category),
             None => flock_category(track).or_else(|| track.device_class.and_then(classic_category)),
         },
+        own: None,
     }
 }
 

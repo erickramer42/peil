@@ -8,11 +8,12 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{self, BufRead};
 
-use crate::describe::{DESCRIBE_VERSION, DescribeFold, DescribeParams, VendorTable};
-use crate::event::{Event, EventKind, TimeNs, is_label, reason_without_values};
+use crate::describe::{DESCRIBE_VERSION, DescribeFold, DescribeParams, OwnAddresses, VendorTable};
+use crate::event::{Event, EventKind, TimeNs, is_label, is_mac, reason_without_values};
+use crate::feed::OwnAddress;
 use crate::feed::{
-    BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, RadioCoverage,
-    RadioState, SourceCoverage, VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
+    BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, MAX_OWN,
+    RadioCoverage, RadioState, SourceCoverage, VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
 };
 use crate::judge::{JudgeFold, PersistenceRule, RULE_SET_VERSION, order_key};
 use crate::rate::{self, Rate};
@@ -134,6 +135,8 @@ pub struct Live<N> {
     slept_ns: TimeNs,
     /// Whether the feed's `end` line came.
     ended: bool,
+    /// The addresses receivers reported as their own.
+    own: OwnAddresses,
 }
 
 impl<N: Normalize> Live<N> {
@@ -167,6 +170,7 @@ impl<N: Normalize> Live<N> {
             torn: 0,
             slept_ns: 0,
             ended: false,
+            own: OwnAddresses::default(),
         }
     }
 
@@ -293,6 +297,14 @@ impl<N: Normalize> Live<N> {
         }
         match line {
             FeedLine::Start { .. } => reject(self, "a second start line"),
+            FeedLine::Own {
+                boot_ns,
+                receiver,
+                addresses,
+            } => match self.apply_own(boot_ns, &receiver, addresses) {
+                Ok(()) => Vec::new(),
+                Err(reason) => reject(self, reason),
+            },
             FeedLine::End { boot_ns } => {
                 if boot_ns < 0 {
                     return reject(self, "end time out of range");
@@ -398,6 +410,14 @@ impl<N: Normalize> Live<N> {
                 .range((recent_from, 0, 0)..)
                 .map(|(_, event)| event),
         );
+        let mut picture = self.describe_fold.picture_with(
+            self.pending.values(),
+            recent,
+            at_ns,
+            &self.describe,
+            &self.vendors,
+        );
+        self.own.label(&mut picture);
         vec![
             VerdictLine::Coverage(self.coverage(Some(boot_ns))),
             VerdictLine::Emitters {
@@ -406,13 +426,7 @@ impl<N: Normalize> Live<N> {
                 vendors: self.vendors.id().map(str::to_owned),
                 recent_ns: self.describe.recent_ns,
                 at_ns,
-                picture: self.describe_fold.picture_with(
-                    self.pending.values(),
-                    recent,
-                    at_ns,
-                    &self.describe,
-                    &self.vendors,
-                ),
+                picture,
             },
             VerdictLine::Verdicts {
                 judge_line: feed_line,
@@ -422,6 +436,34 @@ impl<N: Normalize> Live<N> {
                     .verdicts_with(self.pending.values(), &self.rule),
             },
         ]
+    }
+
+    /// A receiver's own addresses, replacing any it reported before.
+    fn apply_own(
+        &mut self,
+        boot_ns: TimeNs,
+        receiver: &str,
+        addresses: Vec<OwnAddress>,
+    ) -> Result<(), &'static str> {
+        if boot_ns < 0 {
+            return Err("own time out of range");
+        }
+        if !is_label(receiver) {
+            return Err("receiver isn't a valid name");
+        }
+        if addresses.len() > MAX_OWN {
+            return Err("more own addresses than a line may name");
+        }
+        if addresses.iter().any(|a| !is_mac(&a.address)) {
+            return Err("own address isn't of the form xx:xx:xx:xx:xx:xx");
+        }
+        self.saw(boot_ns);
+        let addresses: Vec<_> = addresses
+            .into_iter()
+            .map(|a| (a.radio, a.address))
+            .collect();
+        self.own.set(receiver, &addresses);
+        Ok(())
     }
 
     /// A radio's state change: the time in the state it leaves goes to that

@@ -22,6 +22,16 @@ class FeedTest {
     }
 
     @Test
+    fun aReceiversOwnAddressesAreOneLine() {
+        assertEquals(
+            """{"type":"own","boot_ns":7,"receiver":"laptop","addresses":[{"radio":"wifi","address":"aa:bb:cc:dd:ee:ff"},""" +
+                """{"radio":"bluetooth","address":"bb:bb:bb:00:00:02"}]}""",
+            Feed.own(7, "laptop", listOf("wifi" to "aa:bb:cc:dd:ee:ff", "bluetooth" to "bb:bb:bb:00:00:02")),
+        )
+        assertEquals("""{"type":"own","boot_ns":7,"receiver":"laptop","addresses":[]}""", Feed.own(7, "laptop", emptyList()))
+    }
+
+    @Test
     fun aWithheldLineSaysSo() {
         assertEquals(
             """{"type":"line","seq":1,"boot_ns":2,"source":"android","receiver":"phone","raw":"x","withheld":true}""",

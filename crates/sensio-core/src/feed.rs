@@ -111,6 +111,17 @@ pub enum FeedLine {
         /// When it was stopped, on the boot clock.
         boot_ns: TimeNs,
     },
+    /// The addresses a receiver reported as its own, such as a linked
+    /// laptop's Wi-Fi and Bluetooth (ADR-0004 section 6, ADR-0005, both as
+    /// amended 2026-11-09). The latest for a receiver replaces earlier ones.
+    Own {
+        /// When it was reported, on the boot clock.
+        boot_ns: TimeNs,
+        /// The receiver they belong to.
+        receiver: String,
+        /// Its addresses, at most [`MAX_OWN`].
+        addresses: Vec<OwnAddress>,
+    },
     /// Time the phone slept, so nothing was received.
     Slept {
         /// When it woke, on the boot clock.
@@ -131,6 +142,28 @@ pub enum FeedLine {
         /// Its state from now on.
         state: RadioState,
     },
+}
+
+/// The most addresses an `own` line may name.
+pub const MAX_OWN: usize = 16;
+
+/// One address a receiver reported as its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OwnAddress {
+    /// Its radio.
+    pub radio: OwnRadio,
+    /// The address, `xx:xx:xx:xx:xx:xx`.
+    pub address: String,
+}
+
+/// The radio an own address belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OwnRadio {
+    /// Wi-Fi: an access point or station address.
+    Wifi,
+    /// Bluetooth: the Classic and BLE public address.
+    Bluetooth,
 }
 
 /// A radio's state, as the app reports it.

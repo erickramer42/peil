@@ -969,3 +969,114 @@ fn an_end_time_out_of_range_is_rejected_and_the_feed_still_reads_cut() {
     assert_eq!(rejections(&lines), [(3, None, "end time out of range")]);
     assert_eq!(end_reason(&lines), Some(EndReason::Cut));
 }
+
+fn own(boot_ns: i64, receiver: &str, addresses: &str) -> String {
+    format!(
+        r#"{{"type":"own","boot_ns":{boot_ns},"receiver":"{receiver}","addresses":[{addresses}]}}"#
+    )
+}
+
+/// Each emitter's device with its `own` label, at the last answer.
+fn own_labels(lines: &[VerdictLine]) -> Vec<(String, Option<String>)> {
+    let (_, picture) = *pictures(lines).last().expect("an answer");
+    picture
+        .emitters
+        .iter()
+        .map(|e| (e.device.as_str().to_owned(), e.own.clone()))
+        .collect()
+}
+
+#[test]
+fn a_receivers_own_addresses_label_its_emitters_and_change_no_verdict() {
+    let s = 1_000_000_000_i64;
+    let station = r#"{"kind":"wifi_client","addr":"cc:cc:cc:00:00:01","rssi_dbm":-50}"#;
+    let tag = r#"{"kind":"ble_advert","addr":"DD:DD:DD:00:00:02","rssi_dbm":-60}"#;
+    let classic = r#"{"kind":"bt_classic","addr":"dd:dd:dd:00:00:02","rssi_dbm":-60}"#;
+    let other = r#"{"kind":"ble_advert","addr":"aa:aa:aa:00:00:03","rssi_dbm":-70}"#;
+    let body = |owns: &[String]| {
+        let mut body: Vec<String> = owns.to_vec();
+        body.extend([
+            line(1, s, Some("laptop"), station),
+            line(2, 2 * s, Some("laptop"), tag),
+            line(3, 3 * s, Some("laptop"), classic),
+            line(4, 4 * s, None, other),
+            judge_at(5 * s),
+        ]);
+        feed(&body)
+    };
+    let mine = own(
+        0,
+        "laptop",
+        r#"{"radio":"wifi","address":"CC:CC:CC:00:00:01"},{"radio":"bluetooth","address":"dd:dd:dd:00:00:02"}"#,
+    );
+    let labeled = live(&body(std::slice::from_ref(&mine)), false);
+    assert!(rejections(&labeled).is_empty(), "{labeled:?}");
+    let mut labels = own_labels(&labeled);
+    labels.sort();
+    let laptop = Some("laptop".to_owned());
+    assert_eq!(
+        labels,
+        [
+            ("ble:aa:aa:aa:00:00:03".to_owned(), None),
+            ("ble:dd:dd:dd:00:00:02".to_owned(), laptop.clone()),
+            ("bt:dd:dd:dd:00:00:02".to_owned(), laptop.clone()),
+            ("wifi:cc:cc:cc:00:00:01".to_owned(), laptop.clone()),
+        ]
+    );
+    // The label changes no verdict.
+    let plain = live(&body(&[]), false);
+    assert_eq!(answers(&labeled), answers(&plain));
+    // A later line for the receiver replaces the earlier one.
+    let replaced = live(
+        &body(&[
+            mine,
+            own(
+                0,
+                "laptop",
+                r#"{"radio":"wifi","address":"cc:cc:cc:00:00:01"}"#,
+            ),
+        ]),
+        false,
+    );
+    let labeled: Vec<_> = own_labels(&replaced)
+        .into_iter()
+        .filter(|(_, own)| own.is_some())
+        .map(|(device, _)| device)
+        .collect();
+    assert_eq!(labeled, ["wifi:cc:cc:cc:00:00:01"]);
+}
+
+#[test]
+fn a_bad_own_line_is_rejected_with_its_reason() {
+    let one = r#"{"radio":"wifi","address":"cc:cc:cc:00:00:01"}"#;
+    let seventeen = vec![one; 17].join(",");
+    let lines = live(
+        &feed(&[
+            own(-1, "laptop", one),
+            own(0, "no good", one),
+            own(0, "laptop", &seventeen),
+            own(
+                0,
+                "laptop",
+                r#"{"radio":"wifi","address":"cc:cc:cc:00:00"}"#,
+            ),
+            own(
+                0,
+                "laptop",
+                r#"{"radio":"lora","address":"cc:cc:cc:00:00:01"}"#,
+            ),
+        ]),
+        false,
+    );
+    let reasons: Vec<&str> = rejections(&lines).iter().map(|r| r.2).collect();
+    assert_eq!(
+        reasons[..4],
+        [
+            "own time out of range",
+            "receiver isn't a valid name",
+            "more own addresses than a line may name",
+            "own address isn't of the form xx:xx:xx:xx:xx:xx",
+        ]
+    );
+    assert!(reasons[4].starts_with("unknown variant"), "{}", reasons[4]);
+}
