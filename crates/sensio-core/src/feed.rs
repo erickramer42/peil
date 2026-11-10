@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::describe::Picture;
 use crate::event::TimeNs;
+use crate::find::FindAnswer;
 use crate::judge::Verdict;
 
 /// The feed's schema, named on its first line.
@@ -93,6 +94,17 @@ pub enum FeedLine {
     Judge {
         /// When it was asked, on the boot clock.
         boot_ns: TimeNs,
+    },
+    /// A request for find mode's bearing to one BLE device, over the sweep
+    /// that started at `from_boot_ns` (ADR-0004 section 3, ADR-0005 as
+    /// amended 2026-11-09).
+    Find {
+        /// When it was asked, on the boot clock.
+        boot_ns: TimeNs,
+        /// The device, as its ID's text (`ble:aa:bb:cc:dd:ee:ff`).
+        device: String,
+        /// When the sweep started, on the boot clock; at most `boot_ns`.
+        from_boot_ns: TimeNs,
     },
     /// Lines the core didn't get live.
     Dropped {
@@ -339,6 +351,17 @@ pub enum VerdictLine {
         boot_ns: TimeNs,
         /// The full verdict set.
         verdicts: Vec<Verdict>,
+    },
+    /// The answer to one `find` line: find mode's bearing over the events
+    /// the core still holds from the sweep's start.
+    Find {
+        /// The `find` line's 1-based line number in the feed.
+        find_line: usize,
+        /// Its boot-clock time.
+        boot_ns: TimeNs,
+        /// The estimate.
+        #[serde(flatten)]
+        answer: FindAnswer,
     },
     /// A line that couldn't be used; it's skipped and the stream goes on.
     Rejected {

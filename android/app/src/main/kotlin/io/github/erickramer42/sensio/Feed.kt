@@ -41,6 +41,10 @@ object Feed {
 
     fun judge(bootNs: Long) = """{"type":"judge","boot_ns":$bootNs}"""
 
+    /** A request for find mode's bearing to [device] over the sweep since [fromBootNs] (ADR-0005). */
+    fun find(bootNs: Long, device: String, fromBootNs: Long) =
+        """{"type":"find","boot_ns":$bootNs,"device":${quote(device)},"from_boot_ns":$fromBootNs}"""
+
     fun dropped(lines: Long, source: String = SOURCE, receiver: String = RECEIVER) =
         """{"type":"dropped","source":${quote(source)},"receiver":${quote(receiver)},"lines":$lines}"""
 

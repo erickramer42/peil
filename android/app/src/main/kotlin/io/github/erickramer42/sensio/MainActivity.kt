@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.WindowInsets
@@ -37,6 +38,7 @@ class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var list: TextView
     private lateinit var startStop: Button
+    private lateinit var findButton: Button
     private var selected: String? = null
     private val refresh: () -> Unit = {
         show()
@@ -61,13 +63,14 @@ class MainActivity : Activity() {
         status = Ui.text(this, 14f)
         list = Ui.text(this, 12f).apply { typeface = Ui.mono(this@MainActivity) }
         startStop = Ui.button(this, "Start") { if (Live.running) stop() else start() }
+        findButton = Ui.button(this, "Find") { find() }
 
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             // Labels of different sizes would otherwise shift their buttons down to one baseline.
             isBaselineAligned = false
             val gap = (4 * resources.displayMetrics.density).toInt()
-            listOf(startStop, Ui.button(this@MainActivity, "Mine") { chooseMine() }, Ui.button(this@MainActivity, "Settings") { settings() })
+            listOf(startStop, findButton, Ui.button(this@MainActivity, "Mine") { chooseMine() }, Ui.button(this@MainActivity, "Settings") { settings() })
                 .forEach { addView(it, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(gap, gap, gap, gap) }) }
         }
         body = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -110,6 +113,8 @@ class MainActivity : Activity() {
         if (running) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         startStop.text = if (running) "Stop" else "Start"
+        val target = Live.findTarget
+        findButton.text = if (target != null) "Stop find" else "Find"
 
         val enrolled = Enrolled.devices(this)
         val all = Live.picture
@@ -122,6 +127,9 @@ class MainActivity : Activity() {
         // An emitter that left the picture can't be shown or compared.
         if (chosen == null) selected = null
         ring.selected = selected
+        ring.find = target?.let { device ->
+            RingView.FindState(Live.findAnswer, Live.headingDeg, all?.emitters?.firstOrNull { it.device == device })
+        }
         val trackers = picture?.emitters.orEmpty().count { it.tracker != null }
         ring.contentDescription = if (picture == null) "Emitter ring, empty: no session yet" else
             "Emitter ring: ${picture.emitters.size} emitters by signal strength and kind, $trackers tracker" +
@@ -129,6 +137,11 @@ class MainActivity : Activity() {
         val coverage = Live.coverage
         status.text = buildString {
             append(Live.status)
+            target?.let { device ->
+                val e = all?.emitters?.firstOrNull { it.device == device }
+                val label = listOfNotNull(device.substringAfter(':'), e?.let { Labels.tracker(it) }).joinToString(" ")
+                append('\n').append(Find.line(Live.findAnswer, label))
+            }
             Live.link?.let { append('\n').append(it) }
             if (picture != null) {
                 append("\n${picture.emitters.size} emitters in the last ${picture.recentS} s, ${picture.older} older; ${picture.movement}")
@@ -142,7 +155,10 @@ class MainActivity : Activity() {
                 if (coverage.late > 0) append(", ${coverage.late} over 10 min late")
                 if (coverage.sleptS > 0) append(", asleep ${coverage.sleptS} s")
             }
-            append("\nRings: signal strength, not distance. Angle: kind, not direction.")
+            append(
+                if (target != null) "\nWedge: where the sweep heard it strongest, from the phone's top. Rings: signal strength, not distance."
+                else "\nRings: signal strength, not distance. Angle: kind, not direction.",
+            )
         }
         val emitters = picture?.emitters.orEmpty()
         if (chosen != null) {
@@ -339,6 +355,26 @@ class MainActivity : Activity() {
     }
 
     private fun oneLine(s: String) = s.replace(Regex("\\s+"), " ")
+
+    /** Find: pick a heard BLE emitter, then turn slowly with the phone held in front; again stops it. */
+    private fun find() {
+        if (Live.findTarget != null) {
+            Live.stopFind()
+            return
+        }
+        if (!Live.running) {
+            status.text = "Start a session first: find looks for a BLE emitter the session hears."
+            return
+        }
+        val choices = Find.candidates(Live.picture?.emitters.orEmpty(), selected)
+        if (choices.isEmpty()) {
+            status.text = "No BLE emitter heard in the last minute to find."
+            return
+        }
+        Ui.choices(this, "Find which?", choices.map { e ->
+            oneLine(line(e)) to { Live.startFind(e.device, SystemClock.elapsedRealtimeNanos()) }
+        })
+    }
 
     private fun cycleRetention() {
         val choices = Recordings.RETENTION_CHOICES

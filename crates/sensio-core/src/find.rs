@@ -13,7 +13,7 @@
 
 use serde::Serialize;
 
-use crate::event::{DeviceId, Event, EventKind, TimeNs};
+use crate::event::{Event, EventKind, TimeNs};
 
 /// The version of find mode's estimate; bumped when its logic or a default changes.
 pub const FIND_VERSION: u32 = 1;
@@ -78,8 +78,8 @@ pub struct Sector {
 pub struct FindAnswer {
     /// [`FIND_VERSION`].
     pub find_version: u32,
-    /// The device looked for.
-    pub device: DeviceId,
+    /// The device looked for, as its ID's text (`ble:aa:bb:cc:dd:ee:ff`).
+    pub device: String,
     /// The sweep's start: readings before it aren't used.
     pub from_ns: TimeNs,
     /// How far the sweep has got.
@@ -112,16 +112,17 @@ pub struct FindAnswer {
 /// instant, then input order. A reading pairs only with a heading from its
 /// own receiver.
 #[must_use]
-pub fn find(
-    events: &[Event],
-    device: &DeviceId,
+pub fn find<'a>(
+    events: impl IntoIterator<Item = &'a Event>,
+    device: &str,
     from_ns: TimeNs,
     params: &FindParams,
 ) -> FindAnswer {
     // Clamped to 4..=72, so the count converts to u32 and f64 exactly.
     let count = u32::try_from(params.sectors.clamp(4, 72)).unwrap_or(12);
     let width = 360.0 / f64::from(count);
-    let sweep = pair(events, device, from_ns, params, width, count);
+    let events: Vec<&Event> = events.into_iter().collect();
+    let sweep = pair(&events, device, from_ns, params, width, count);
     let sectors: Vec<Sector> = (0..count)
         .zip(sweep.bins)
         .map(|(i, mut readings)| Sector {
@@ -162,7 +163,7 @@ pub fn find(
     };
     FindAnswer {
         find_version: FIND_VERSION,
-        device: device.clone(),
+        device: device.to_owned(),
         from_ns,
         status,
         bearing_deg: strongest
@@ -186,8 +187,8 @@ struct Sweep {
 }
 
 fn pair(
-    events: &[Event],
-    device: &DeviceId,
+    events: &[&Event],
+    device: &str,
     from_ns: TimeNs,
     params: &FindParams,
     width: f64,
@@ -210,7 +211,7 @@ fn pair(
         latest: None,
     };
     for &i in &order {
-        let event = &events[i];
+        let event = events[i];
         let receiver = event.receiver.as_deref();
         if let EventKind::Heading {
             azimuth_deg,
@@ -232,7 +233,7 @@ fn pair(
         else {
             continue;
         };
-        if event.t_ns < from_ns || event.kind.device().as_ref() != Some(device) {
+        if event.t_ns < from_ns || event.kind.device().is_none_or(|d| d.as_str() != device) {
             continue;
         }
         sweep.latest = Some((event.t_ns, rssi));

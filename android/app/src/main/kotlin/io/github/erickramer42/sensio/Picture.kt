@@ -78,6 +78,7 @@ object VerdictStream {
         return when (o.optString("type")) {
             "emitters" -> picture(o)
             "coverage" -> coverage(o)
+            "find" -> find(o)
             else -> null
         }
     }
@@ -85,6 +86,20 @@ object VerdictStream {
     private fun JSONObject.text(key: String): String? = if (has(key) && !isNull(key)) optString(key) else null
 
     private fun JSONObject.number(key: String): Double? = if (has(key) && !isNull(key)) optDouble(key) else null
+
+    private fun find(o: JSONObject): FindAnswer {
+        val sectors = o.optJSONArray("sectors")
+        return FindAnswer(
+            device = o.optString("device"),
+            status = o.optString("status"),
+            bearingDeg = o.number("bearing_deg"),
+            contrastDb = o.number("contrast_db"),
+            paired = o.optLong("paired"),
+            unpaired = o.optLong("unpaired"),
+            latestDbm = o.number("latest_dbm"),
+            covered = (0 until (sectors?.length() ?: 0)).map { sectors!!.getJSONObject(it).optLong("readings") > 0 },
+        )
+    }
 
     private fun picture(o: JSONObject): Picture {
         val list = o.optJSONArray("emitters")
@@ -198,6 +213,18 @@ object Live {
     /** Each device a linked receiver gave as its own, with that receiver: offered in the Mine list, unchecked. */
     @Volatile var own: Map<String, String> = emptyMap()
         private set
+    /** The device find mode looks for, or null when it's off. */
+    @Volatile var findTarget: String? = null
+        private set
+    /** When its sweep started, on the boot clock. */
+    @Volatile var findFromBootNs: Long = 0
+        private set
+    /** The core's latest answer for [findTarget]. */
+    @Volatile var findAnswer: FindAnswer? = null
+        private set
+    /** The phone's latest azimuth, degrees from magnetic north, while the screen is on. */
+    @Volatile var headingDeg: Double? = null
+        private set
 
     private val main = Handler(Looper.getMainLooper())
     private val listeners = mutableListOf<() -> Unit>()
@@ -226,10 +253,39 @@ object Live {
         notifyListeners()
     }
 
+    /** Starts finding [device], its sweep from [fromBootNs]. */
+    fun startFind(device: String, fromBootNs: Long) {
+        findTarget = device
+        findFromBootNs = fromBootNs
+        findAnswer = null
+        notifyListeners()
+    }
+
+    fun stopFind() {
+        findTarget = null
+        findAnswer = null
+        notifyListeners()
+    }
+
+    /** An answer from the core; one for a device no longer looked for is dropped. */
+    fun find(answer: FindAnswer) {
+        if (answer.device != findTarget) return
+        findAnswer = answer
+        notifyListeners()
+    }
+
+    /** The phone's heading; the screen hears of it only while finding, when the wedge turns with it. */
+    fun heading(deg: Double) {
+        headingDeg = deg
+        if (findTarget != null) notifyListeners()
+    }
+
     fun clear() {
         picture = null
         coverage = null
         own = emptyMap()
+        findTarget = null
+        findAnswer = null
     }
 
     private fun notifyListeners() {

@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.Paint
+import android.graphics.RectF
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.cos
@@ -36,6 +37,21 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
 
     var onTap: ((String?) -> Unit)? = null
 
+    /** Find mode's view, when it's on: the core's answer, the phone's heading, and the target as last heard. */
+    class FindState(val answer: FindAnswer?, val headingDeg: Double?, val target: Emitter?)
+
+    /**
+     * While set, the ring shows find mode instead of the emitters by kind: the
+     * bearing as a wedge turned to the phone's top, each direction the sweep
+     * has heard as an arc on the rim, and the target at its strength in the
+     * wedge. Angle means direction only here.
+     */
+    var find: FindState? = null
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** Where each dot was last drawn, for taps. */
     private var spots: List<Spot> = emptyList()
 
@@ -48,6 +64,18 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
     private val unknownRingPaint = Paint(ringPaint).apply { pathEffect = DashPathEffect(floatArrayOf(6 * density, 6 * density), 0f) }
     private val sectorPaint = Paint(ringPaint).apply { color = palette.faint }
     private val dot = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val wedge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = palette.text
+        alpha = 48
+    }
+    private val wedgeEdge = Paint(ringPaint).apply { color = palette.text }
+    private val swept = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 4 * density
+        color = palette.textDim
+    }
+    private val bounds = RectF()
     private val halo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = 2.5f * density
@@ -85,6 +113,15 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
         val cy = height / 2f
         // Room outside the edge for the selection ring of a dot on it.
         val r = min(cx, cy) - 17 * density
+
+        find?.let { state ->
+            val rim = state.target?.let { RingScale.onRim(it) } ?: false
+            for (dbm in RingScale.GUIDES) canvas.drawCircle(cx, cy, RingScale.fraction(dbm, rim) * r, ringPaint)
+            dot.color = palette.text
+            canvas.drawCircle(cx, cy, 5 * density, dot)
+            drawFind(canvas, state, cx, cy, r, rim)
+            return
+        }
 
         val sectors = sectors(picture?.emitters.orEmpty().mapTo(HashSet()) { it.kind })
         if (sectors.size > 1) {
@@ -146,6 +183,30 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             val text = "no dBm"
             outlined(canvas, text, cx + r - bandLabel.measureText(text) - 4 * density, cy + bandLabel.textSize + 2 * density, bandLabel)
         }
+    }
+
+    /** Find mode's marks; canvas angles run clockwise from east, so the phone's top is -90. */
+    private fun drawFind(canvas: Canvas, state: FindState, cx: Float, cy: Float, r: Float, rim: Boolean) {
+        spots = emptyList()
+        val heading = state.headingDeg ?: return
+        val answer = state.answer ?: return
+        val span = if (answer.covered.isEmpty()) return else 360f / answer.covered.size
+        bounds.set(cx - r, cy - r, cx + r, cy + r)
+        answer.covered.forEachIndexed { i, heard ->
+            if (heard) canvas.drawArc(bounds, (Find.relative(i * span.toDouble(), heading) - 90).toFloat() + 1, span - 2, false, swept)
+        }
+        val bearing = answer.bearingDeg ?: return
+        val toward = (Find.relative(bearing, heading) - 90).toFloat()
+        canvas.drawArc(bounds, toward - span / 2, span, true, wedge)
+        canvas.drawArc(bounds, toward - span / 2, span, true, wedgeEdge)
+        val target = state.target ?: return
+        val radius = r * RingScale.place(target, rim, 0.5f)
+        val a = Math.toRadians(toward.toDouble())
+        val x = cx + radius * cos(a).toFloat()
+        val y = cy + radius * sin(a).toFloat()
+        dot.color = if (target.tracker != null) palette.danger else palette.kinds[target.kind] ?: palette.textDim
+        canvas.drawCircle(x, y, 6 * density, dot)
+        canvas.drawCircle(x, y, 15 * density, selectedRing)
     }
 
     private fun outlined(canvas: Canvas, text: String, x: Float, y: Float, paint: Paint) {

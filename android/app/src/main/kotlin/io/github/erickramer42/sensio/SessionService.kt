@@ -109,9 +109,11 @@ class SessionService : Service() {
             SensorManager.getOrientation(rotation, orientation)
             // values[4] is the heading accuracy in radians, or -1 when unknown.
             val accuracy = event.values.getOrNull(4)?.takeIf { it >= 0f }?.let { Math.toDegrees(it.toDouble()) }
+            val azimuth = Feed.azimuth(orientation[0])
+            Live.heading(azimuth)
             data(
                 Feed.rotRaw(
-                    Feed.azimuth(orientation[0]),
+                    azimuth,
                     Math.toDegrees(orientation[1].toDouble()),
                     Math.toDegrees(orientation[2].toDouble()),
                     accuracy,
@@ -191,6 +193,14 @@ class SessionService : Service() {
             }
             radio("bt_classic", state)
             handler.postDelayed(this, CLASSIC_EVERY_MS)
+        }
+    }
+
+    /** While find mode is on, asks the core for its bearing every [FIND_EVERY_MS]. */
+    private val findTick = object : Runnable {
+        override fun run() {
+            Live.findTarget?.let { control(Feed.find(SystemClock.elapsedRealtimeNanos(), it, Live.findFromBootNs)) }
+            handler.postDelayed(this, FIND_EVERY_MS)
         }
     }
 
@@ -276,6 +286,7 @@ class SessionService : Service() {
         location.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1_000L, 0f, locationListener, worker.looper)
         radio("gnss", if (location.isProviderEnabled(LocationManager.GPS_PROVIDER)) Feed.RadioState.ON else Feed.RadioState.OFF)
         handler.postDelayed(tick, JUDGE_EVERY_MS)
+        handler.postDelayed(findTick, FIND_EVERY_MS)
         link = Link(
             this,
             line = { source, receiver, remoteNs, raw -> data(raw, source, receiver, remoteNs) },
@@ -423,6 +434,7 @@ class SessionService : Service() {
         when (val parsed = VerdictStream.parse(line)) {
             is Picture -> Live.update(picture = parsed)
             is Coverage -> Live.update(coverage = parsed)
+            is FindAnswer -> Live.find(parsed)
         }
     }
 
@@ -512,6 +524,7 @@ class SessionService : Service() {
 
     companion object {
         const val JUDGE_EVERY_MS = 3_000L
+        const val FIND_EVERY_MS = 1_000L
         const val WIFI_EVERY_MS = 10_000L
         const val BLE_RENEW_MS = 240_000L
         const val HEADING_EVERY_MS = 250L

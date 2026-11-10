@@ -32,6 +32,14 @@ class FeedTest {
     }
 
     @Test
+    fun aFindRequestNamesTheDeviceAndTheSweepsStart() {
+        assertEquals(
+            """{"type":"find","boot_ns":9000,"device":"ble:aa:aa:aa:00:00:01","from_boot_ns":1000}""",
+            Feed.find(9000, "ble:aa:aa:aa:00:00:01", 1000),
+        )
+    }
+
+    @Test
     fun aRotationReadingIsOneLineInDegrees() {
         assertEquals(
             """{"t":"rot","az":271.5,"pitch":-12.0,"roll":3.25,"acc":11.0}""",

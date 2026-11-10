@@ -15,6 +15,7 @@ use crate::feed::{
     BoundedLine, Coverage, EndReason, FEED_SCHEMA, FeedLine, MAX_LINE_BYTES, MAX_OWN,
     RadioCoverage, RadioState, SourceCoverage, VERDICTS_SCHEMA, VerdictLine, read_bounded_line,
 };
+use crate::find::{FindParams, find};
 use crate::judge::{JudgeFold, PersistenceRule, RULE_SET_VERSION, order_key};
 use crate::rate::{self, Rate};
 use crate::summary::{Device, Flagged, RouteFold, SUMMARY_SCHEMA, Session, StopSpan, Summary};
@@ -138,6 +139,7 @@ pub struct Live<N> {
     rule: PersistenceRule,
     describe: DescribeParams,
     vendors: VendorTable,
+    find: FindParams,
     include_withheld: bool,
     started: bool,
     feed_lines: usize,
@@ -182,6 +184,7 @@ impl<N: Normalize> Live<N> {
             rule,
             describe: DescribeParams::default(),
             vendors: VendorTable::default(),
+            find: FindParams::default(),
             include_withheld,
             started: false,
             feed_lines: 0,
@@ -469,6 +472,11 @@ impl<N: Normalize> Live<N> {
                 }
                 self.answer(feed_line, boot_ns)
             }
+            FeedLine::Find {
+                boot_ns,
+                device,
+                from_boot_ns,
+            } => self.find_answer(feed_line, boot_ns, &device, from_boot_ns),
             FeedLine::Dropped {
                 source,
                 receiver,
@@ -551,6 +559,39 @@ impl<N: Normalize> Live<N> {
                     .verdicts_with(self.pending.values(), &self.rule),
             },
         ]
+    }
+
+    /// Answers a `find` line: find mode's estimate over the events still
+    /// held from the sweep's start, and a heading at most a pairing's age
+    /// before it.
+    fn find_answer(
+        &mut self,
+        feed_line: usize,
+        boot_ns: TimeNs,
+        device: &str,
+        from_boot_ns: TimeNs,
+    ) -> Vec<VerdictLine> {
+        if boot_ns < 0 || !(0..=boot_ns).contains(&from_boot_ns) {
+            return self.reject_feed_line(feed_line, "find time out of range".to_owned());
+        }
+        let Some(addr) = device.strip_prefix("ble:").filter(|a| is_mac(a)) else {
+            let reason = "find's device isn't of the form ble:xx:xx:xx:xx:xx:xx";
+            return self.reject_feed_line(feed_line, reason.to_owned());
+        };
+        let device = format!("ble:{}", addr.to_ascii_lowercase());
+        self.saw(boot_ns);
+        let from_ns = self.utc(from_boot_ns, None, None).unwrap_or(0);
+        let start = from_ns.saturating_sub(self.find.max_heading_age_ns);
+        let first = self.window.partition_point(|e| e.t_ns < start);
+        let held = self
+            .window
+            .range(first..)
+            .chain(self.pending.range((start, 0, 0)..).map(|(_, event)| event));
+        vec![VerdictLine::Find {
+            find_line: feed_line,
+            boot_ns,
+            answer: find(held, &device, from_ns, &self.find),
+        }]
     }
 
     /// A receiver's own addresses, replacing any it reported before.

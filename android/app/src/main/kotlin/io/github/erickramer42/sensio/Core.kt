@@ -20,7 +20,7 @@ class Core(
 ) {
     /**
      * The first [bytes] of a saved feed, passed on before any live line, so a
-     * restarted core knows what the stopped one knew. Its `judge` lines are
+     * restarted core knows what the stopped one knew. Its `judge` and `find` lines are
      * left out: the earlier answers were already shown.
      */
     class Prelude(val file: File, val bytes: Long)
@@ -65,7 +65,7 @@ class Core(
             while (left > 0) {
                 val line = reader.readLine() ?: break
                 left -= line.toByteArray().size + 1
-                if (line.startsWith(JUDGE)) continue
+                if (line.startsWith(JUDGE) || line.startsWith(FIND)) continue
                 stdin.write(line)
                 stdin.write('\n'.code)
             }
@@ -96,5 +96,6 @@ class Core(
         const val BUFFER_LINES = 8192
         private val END = String(charArrayOf())
         private const val JUDGE = """{"type":"judge""""
+        private const val FIND = """{"type":"find""""
     }
 }
