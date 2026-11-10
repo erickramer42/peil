@@ -1,6 +1,6 @@
 # Peil
 
-Peil lists what's transmitting around a vehicle or a building, the loudest first, and tells you whether any of it is unusual or staying with you. It reads what other programs already receive: an Android phone's own Wi-Fi, Bluetooth and GNSS scans, and Kismet on a laptop. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
+Peil lists what's transmitting around a vehicle or a building, the loudest first, and tells you whether any of it is unusual or staying with you. It reads what other programs already receive: an Android phone's own Wi-Fi, Bluetooth and GNSS scans, and on a laptop, Kismet and readsb's aircraft at 1090 MHz. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
 
 _*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
 
@@ -17,13 +17,15 @@ _*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
 - See what's transmitting: each emitter's kind, signal band (strength, never distance), vendor, tracker network and Wi-Fi security, loudest first ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).
   - `peil describe` prints the picture; the app draws it as a ring and a list.
   - The ambient texture: emitters of each kind in the last minute, the new ones, randomized Wi-Fi.
+  - Overhead: aircraft from readsb and drones from their Remote ID adverts, with distance and bearing from the vehicle ([ADR-0007](docs/adr/0007-aircraft-and-drones.md)).
 - Judge whether a device stays with you: the rule `persistence.places` flags a device heard during the vehicle's stops at distinct places. `peil judge` runs it over a file of events.
 - Run live, replay later: `peil live` reads the feed the app writes and answers with the picture, coverage and verdicts; a saved feed replays to the same bytes.
   - `peil summary` tells what a saved session came to: how it ended, its coverage, stops and route, and each verdict with its evidence.
 - Use the phone app on Android 12 or later: it reads Wi-Fi, BLE, GNSS and opt-in Bluetooth Classic, and keeps each session's raw lines on the phone.
   - Tap a dot for its details; mark your own devices to hide them.
   - Coverage shows each radio's state, its time lost or filtered, and what isn't watched; the [guide](docs/guide.md) has the rest.
-- Add a laptop's Kismet: `peil link` sends Kismet's devices, Wi-Fi stations included, to the app over USB tethering after pairing once ([guide](docs/guide.md#the-laptop-link)).
+  - Find a BLE device, such as a tracker in your car: turn in place, and the ring shows the direction it's strongest.
+- Add a laptop: `peil link` sends Kismet's devices, Wi-Fi stations included, and readsb's aircraft to the app over USB tethering after pairing once ([guide](docs/guide.md#the-laptop-link)).
 - Install a release: `peil` for Linux on x86_64 and aarch64, and the signed APK; [CHANGELOG.md](CHANGELOG.md) has the changes.
 
 ## Status
@@ -37,8 +39,8 @@ sensor tier (separate programs)            Peil
 -------------------------------            ----------------------------------------------
 the phone's scans  Wi-Fi, BLE, GNSS  --.
 Kismet             REST              --+-->  sources -> the feed (raw lines, one clock)
-gpsd               JSON (next)       --'                     |
-                                                             v  live, or replayed
+readsb             aircraft list     --+                     |
+gpsd               JSON (next)       --'                     v  live, or replayed
                                            normalized events -> picture, evidence -> verdicts
                                                                                        |
                                                                       the app, the peil command
@@ -90,6 +92,7 @@ One JSON object per line ([ADR-0002](docs/adr/0002-recordings-and-session-clock.
 {"t_ns":1800000003000000000,"source":"kismet","receiver":"laptop","kind":"wifi_client","addr":"dd:dd:dd:00:00:01","bssid":"cc:cc:cc:00:00:01","freq_mhz":5180,"rssi_dbm":-70}
 {"t_ns":1800000004000000000,"source":"kismet","receiver":"laptop","kind":"bt_classic","addr":"ee:ee:ee:00:00:01","rssi_dbm":-66,"device_class":2098180}
 {"t_ns":1800000005000000000,"source":"android","receiver":"phone","kind":"heading","azimuth_deg":271.5,"pitch_deg":-12.0,"roll_deg":3.25,"accuracy_deg":11.0}
+{"t_ns":1800000006000000000,"source":"readsb","receiver":"laptop","kind":"aircraft","address":"bbbb01","heard_as":"adsb_icao","callsign":"TEST01","alt_baro_ft":3500,"lat_deg":60.01,"lon_deg":10.02,"signal_dbfs":-21.4}
 ```
 
 A fix's `course_deg` is its direction of travel, when the receiver gave one; a `heading` is which way the receiver faces, from its orientation sensor, and is never a sighting. A Wi-Fi station carries its address and the network it's on, never what it sent or the network names it asks for; a device's name is never kept, since it's often a person's. A rejected line is reported by line, column and reason, never by its value.
