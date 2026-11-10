@@ -1,0 +1,8 @@
+{ "now" : 1800000000.5,
+  "messages" : 1200,
+  "aircraft" : [
+    {"hex":"aaaa01","type":"adsb_icao","flight":"TEST01  ","alt_baro":3500,"alt_geom":3650,"gs":120.4,"track":271.2,"lat":60.01,"lon":10.02,"category":"A7","squawk":"1200","emergency":"none","messages":40,"seen":0.3,"seen_pos":0.8,"rssi":-21.4},
+    {"hex":"bbbb02","type":"mode_s","alt_baro":12000,"messages":12,"seen":2.1,"rssi":-30.2},
+    {"hex":"~cccc03","type":"tisb_other","alt_baro":"ground","lat":60.02,"lon":10.01,"messages":3,"seen":5.0,"seen_pos":5.0,"rssi":-35.0}
+  ]
+}

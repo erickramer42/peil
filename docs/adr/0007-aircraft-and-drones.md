@@ -1,0 +1,36 @@
+# ADR-0007: Aircraft and drones
+
+Status: Accepted. Built: the readsb reader in `peil link` (`crates/sensio-sources/src/readsb_file.rs`, `--readsb`). Not yet built: the `readsb` normalizer and the `aircraft` event, aircraft in the picture, the FAA registry snapshot, and the Remote ID format. Amends ADR-0001 section 1, ADR-0005 section 8 and ADR-0006 sections 2, 4 and 5.
+
+## Context
+
+The question Peil answers (ADR-0006 section 8) includes what is overhead: an aircraft or a drone near the vehicle is an emitter like any other, and one that stays over the user's track is the kind of thing worth noticing. Two kinds of broadcast say what is up there, and both are meant to be received by anyone. ADS-B at 1090 MHz is each equipped aircraft announcing its 24-bit ICAO address, callsign, position, altitude and emitter category; a transponder that only answers interrogations (Mode S) gives its address and altitude without a position. Remote ID is each drone announcing its identity, its position and its operator's position, over Bluetooth and Wi-Fi, as the FAA's rule (14 CFR Part 89) requires in the US; the message format is ASTM F3411, whose reference implementation, Open Drone ID, is published under Apache-2.0.
+
+An RTL-SDR on the vehicle's roof, plugged into the laptop, receives 1090 MHz. Decoding it is a solved problem with GPL programs (dump1090 and its forks), which sit on the far side of the process boundary like Kismet and rtl_433 (ADR-0001 section 2). Remote ID needs no new hardware: the phone's BLE scan already hears its adverts as service data.
+
+The FAA publishes its aircraft registry as a releasable database: each registered aircraft's N-number, its Mode S address, its make and model, and its registrant. Many registrants are people, named with their addresses.
+
+## Decision
+
+1. **readsb is the 1090 MHz decoder, read across the process boundary.** readsb (GPL-3.0) runs on the laptop with the RTL-SDR and writes its aircraft list as JSON (`aircraft.json`, once a second). `peil link` reads that file and hands on each aircraft object that has a new message since the last read, with readsb's `now` beside it, as a line from source `readsb`, the way it hands on Kismet's records (ADR-0004 section 6). Peil links none of readsb's code. readsb absent, stopped or writing nothing is coverage: the link's status says which, and the `aircraft` radio reads off or lost. One dongle tunes one band, so 1090 MHz and 315 MHz (TPMS, rtl_433) need two dongles or time sharing.
+
+2. **Raw lines, then an `aircraft` event.** The saved feed keeps readsb's object as received (ADR-0002 section 1). The `readsb` normalizer turns it into an `aircraft` event: the address (`adsb:` and six hex digits; a non-ICAO address, which readsb marks with `~`, keeps its own prefix so the two never collide), how readsb heard it (ADS-B, Mode S, MLAT, TIS-B and the rest), the callsign, barometric altitude or on the ground, geometric altitude, ground speed and track, position, emitter category (A0 to D7), squawk, emergency state, and signal strength. readsb's strength is in dBFS, relative to the dongle's full scale, not dBm, so it is carried as its own field and never placed on the dBm scale the other radios share. An aircraft heard without a position is an event with no position. Every field is a stranger's (ADR-0001 section 6) and is range-checked.
+
+3. **In the picture, not yet in the judge.** Aircraft join the emitter picture (ADR-0006) as entries with their identity, altitude, emitter category, and distance and bearing from the vehicle's latest fix where both positions are known. The judge reads no `aircraft` event, so no verdict changes and `RULE_SET_VERSION` doesn't move. A rule for an aircraft circling or holding over the user's track is a later amendment, with its own parameters.
+
+4. **The ADS-B emitter category names the kind.** The category an aircraft announces (light, heavy, rotorcraft, glider, unmanned and the rest, from the ADS-B identification message's table) is a category entry like any other, citing its public source, with the entry naming the announced code.
+
+5. **The FAA registry is bundled, without people's names.** The core carries a dated snapshot of the FAA's releasable aircraft database, cut to what describes the aircraft: Mode S address, N-number, manufacturer and model, aircraft and engine type, year built, and the registrant's type. The registrant's name is kept only where the registrant is an organization (a corporation, a limited liability company, a government); a person's name, co-owners' names and every address are dropped when the snapshot is made, so no person's name is ever in the repository, a build or a picture. A packaging script makes the snapshot from the FAA's download, records its date and hash, and is run only for a minor release, like the vendor registry (ADR-0006 section 5 as amended). Aircraft whose owners have them withheld from public tracking, or that transmit a privacy ICAO address, don't resolve, and the description says the lookup found nothing.
+
+6. **Remote ID is an advert format.** A BLE advert with service data under 0xFFFA whose first byte is the Open Drone ID application code (0x0D) is Remote ID: then a message counter and one 25-byte message, little-endian, or a message pack of several where the radio allows longer adverts. The describe layer reads its messages: Basic ID (the ID type, the UA type and the UAS ID), Location (the drone's status, position, altitudes, speed and direction), System (the operator's location and its kind, takeoff, live or fixed, and the operating area) and Operator ID. A drone is an emitter with its own position and its operator's, so the picture can place both against the vehicle. Wi-Fi Remote ID (beacons and NAN) waits for a source that delivers those frames.
+
+7. **978 MHz UAT comes later.** Small aircraft in the US may announce on 978 MHz (UAT) instead of 1090. readsb doesn't decode it; a later amendment adds its decoder as another source of `aircraft` events.
+
+## Consequences
+
+- ADR-0001 section 1's sensor tier gains readsb, read as a file; THIRD_PARTY_NOTICES.md lists it.
+- ADR-0005 section 8's sources gain `readsb`; the feed gains no line type.
+- ADR-0006 gains an emitter kind (aircraft), a category table (ADS-B emitter categories), an advert format (Remote ID), and a second bundled table (the FAA snapshot), named by its hash in each description set as the vendor registry is.
+- Remote ID's positions are where a person is (the operator) and where their drone is; ADS-B positions are less personal but still part of a session. Both fall under ADR-0002 section 5 like every other identifier in a recording. Fixtures use made-up addresses, IDs and registrations.
+- The FAA snapshot adds a few megabytes to the core; the bundled tables' size is measured when it's made.
+- Both broadcasts are meant to be received; Peil decodes no one's communications (ADR-0001 section 5) and reads no voice, data link or message traffic.

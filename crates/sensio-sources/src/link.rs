@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::kismet_poll::Poller;
+use crate::readsb_file::{ReadError, Reader};
 
 /// The link's schema name.
 pub const SCHEMA: &str = "sensio.link/1";
@@ -315,8 +316,10 @@ pub struct Config {
     /// This laptop's own radio addresses; the hello carries the first
     /// [`MAX_OWN`].
     pub own: Vec<OwnAddress>,
-    /// How often to poll Kismet.
+    /// How often to poll Kismet, and to read readsb's aircraft list.
     pub poll_every: Duration,
+    /// readsb's aircraft list, or none to leave aircraft out.
+    pub readsb: Option<std::path::PathBuf>,
 }
 
 /// The phone's address on the USB tether: the gateway of the default route
@@ -421,9 +424,43 @@ fn hello(
     Ok(())
 }
 
+/// One read of readsb's aircraft list: a status line when its state changes
+/// (writing, absent, stopped), then a line for each aircraft with news.
+fn read_aircraft(
+    reader: &mut Reader,
+    clock: fn() -> i64,
+    writer: &Mutex<BufWriter<TcpStream>>,
+    log: &mut dyn FnMut(&str),
+    state: &mut Option<Result<(), ReadError>>,
+) -> Result<(), LinkError> {
+    let now = clock();
+    let answer = reader.read(now);
+    let current = answer.as_ref().map(|_| ()).map_err(Clone::clone);
+    if state.as_ref() != Some(&current) {
+        let text = match &current {
+            Ok(()) => "readsb is writing its aircraft list".to_owned(),
+            Err(err) => err.to_string(),
+        };
+        log(&text);
+        send(writer, &LinkLine::Status { text })?;
+        *state = Some(current);
+    }
+    answer.unwrap_or_default().into_iter().try_for_each(|raw| {
+        send(
+            writer,
+            &LinkLine::Line {
+                source: crate::readsb::SOURCE.to_owned(),
+                remote_ns: now,
+                raw,
+            },
+        )
+    })
+}
+
 /// One link session: connects, says hello (pairing, or proving a pairing),
-/// then answers pings and passes on each poll's Kismet records until the
-/// connection ends or `stop` is set. `clock` is the laptop's clock in
+/// then answers pings and passes on each poll's Kismet records, and readsb's
+/// aircraft where [`Config::readsb`] names its list, until the connection
+/// ends or `stop` is set. `clock` is the laptop's clock in
 /// nanoseconds; `log` gets a line for each change worth telling the user;
 /// `paired` gets a new pairing to keep.
 ///
@@ -476,6 +513,8 @@ pub fn run_session(
     };
 
     let mut kismet_ok: Option<bool> = None;
+    let mut aircraft = config.readsb.as_deref().map(Reader::new);
+    let mut readsb_state: Option<Result<(), ReadError>> = None;
     let result = loop {
         if stop.load(Ordering::SeqCst) {
             break Ok(());
@@ -511,6 +550,11 @@ pub fn run_session(
                 )
             });
             if let Err(err) = sent {
+                break Err(err);
+            }
+        }
+        if let Some(reader) = aircraft.as_mut() {
+            if let Err(err) = read_aircraft(reader, clock, &writer, log, &mut readsb_state) {
                 break Err(err);
             }
         }

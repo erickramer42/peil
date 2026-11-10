@@ -2,7 +2,8 @@
 //!
 //! Each adapter reads one program's own output across a process boundary
 //! (ADR-0001): Kismet's REST API, event stream and pcapng packet stream,
-//! `rtl_433`'s JSON lines, gpsd's JSON. None links their code, which keeps
+//! `rtl_433`'s JSON lines, gpsd's JSON, readsb's aircraft list (ADR-0007).
+//! None links their code, which keeps
 //! this crate's license independent of theirs.
 //!
 //! Normalizing is separate from receiving (ADR-0002, ADR-0005): a feed line
@@ -15,6 +16,8 @@ pub mod android;
 pub mod kismet;
 pub mod kismet_poll;
 pub mod link;
+pub mod readsb;
+pub mod readsb_file;
 pub mod sensio;
 mod wifi;
 

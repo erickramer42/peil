@@ -94,8 +94,8 @@ enum Command {
         #[arg(long)]
         vendors: Option<PathBuf>,
     },
-    /// Send this computer's Kismet devices to the app on the phone over the
-    /// USB tether (sensio.link/1), until stopped. Reads Kismet's API key from
+    /// Send this computer's Kismet devices, and readsb's aircraft, to the app
+    /// on the phone over the USB tether (sensio.link/1), until stopped. Reads Kismet's API key from
     /// `PEIL_KISMET_API_KEY`, or else from `peil/kismet-api-key` in the
     /// user's configuration directory.
     Link(LinkArgs),
@@ -131,6 +131,13 @@ struct LinkArgs {
     /// is never left out of the verdicts.
     #[arg(long, value_parser = link::parse_own)]
     own: Vec<link::OwnAddress>,
+    /// readsb's aircraft list (its `--write-json` directory's
+    /// `aircraft.json`), read with each poll and sent as `readsb` lines.
+    #[arg(long, default_value = sensio_sources::readsb_file::DEFAULT_PATH)]
+    readsb: PathBuf,
+    /// Send no aircraft, whether readsb is running or not.
+    #[arg(long)]
+    no_readsb: bool,
 }
 
 /// Reads the vendor registry given, or takes the snapshot built into the core.
@@ -523,6 +530,7 @@ fn link_until_stopped(args: &LinkArgs) -> Result<ExitCode> {
                 app: format!("peil {}", env!("CARGO_PKG_VERSION")),
                 own: own.clone(),
                 poll_every,
+                readsb: (!args.no_readsb).then(|| args.readsb.clone()),
             };
             let mut poller = Poller::new(kismet, api_key.clone(), window_s);
             link::run_session(

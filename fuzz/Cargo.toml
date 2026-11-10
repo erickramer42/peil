@@ -83,5 +83,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "readsb_file"
+path = "fuzz_targets/readsb_file.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

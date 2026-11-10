@@ -132,6 +132,7 @@ fn config(phone: SocketAddr, auth: Auth) -> Config {
         app: "peil-test".to_owned(),
         own: vec![own_wifi()],
         poll_every: Duration::from_millis(50),
+        readsb: None,
     }
 }
 
@@ -238,6 +239,70 @@ fn a_session_says_hello_answers_pings_and_sends_kismets_records() {
         log.iter().any(|l| l.starts_with("linked to the phone")),
         "{log:?}"
     );
+}
+
+#[test]
+fn a_session_sends_readsbs_aircraft_whether_kismet_answers_or_not() {
+    let list = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("link-aircraft.json");
+    std::fs::write(&list, include_str!("fixtures/readsb-aircraft.json")).expect("write");
+    let phone = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let address = phone.local_addr().expect("address");
+    let phone = thread::spawn(move || {
+        let (mut stream, _) = phone.accept().expect("accept");
+        let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+        let _hello = receive(&mut reader);
+        send(&mut stream, &LinkLine::Welcome { secret: None });
+        let mut got = Vec::new();
+        while got
+            .iter()
+            .filter(|l| matches!(l, LinkLine::Line { source, .. } if source == "readsb"))
+            .count()
+            < 3
+        {
+            got.push(receive(&mut reader));
+        }
+        got
+    });
+    let pairing = Pairing {
+        receiver: "laptop".to_owned(),
+        secret: SECRET.to_owned(),
+    };
+    let mut poller = Poller::new("http://127.0.0.1:9", None, 10);
+    let config = Config {
+        readsb: Some(list),
+        ..config(address, Auth::Paired(pairing))
+    };
+    let ended = link::run_session(
+        &config,
+        &mut poller,
+        clock,
+        &AtomicBool::new(false),
+        &mut |_| {},
+        &mut |_| {},
+    );
+    let got = phone.join().expect("the phone");
+    assert!(matches!(ended, Err(LinkError::Closed(_))), "{ended:?}");
+    assert!(got.contains(&LinkLine::Status {
+        text: "readsb is writing its aircraft list".to_owned()
+    }));
+    let aircraft: Vec<(&str, i64)> = got
+        .iter()
+        .filter_map(|l| match l {
+            LinkLine::Line {
+                source,
+                remote_ns,
+                raw,
+            } if source == "readsb" => Some((raw.as_str(), *remote_ns)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(aircraft.len(), 3);
+    assert!(
+        aircraft[0].0.contains(r#""hex":"aaaa01""#),
+        "{}",
+        aircraft[0].0
+    );
+    assert_eq!(aircraft[0].1, NOW_NS);
 }
 
 #[test]

@@ -9,6 +9,7 @@ Peil reads the output of these programs across a process boundary. It doesn't li
 | [Kismet](https://www.kismetwireless.net/) | Wi-Fi and BLE capture, device records, packet stream | GPL-2.0 |
 | [rtl_433](https://github.com/merbanan/rtl_433) | Sub-GHz decoding (tire-pressure sensors and others) | GPL-2.0 |
 | [gpsd](https://gpsd.io/) | GNSS position and time | BSD-2-Clause |
+| [readsb](https://github.com/wiedehopf/readsb) | ADS-B and Mode S decoding at 1090 MHz, its aircraft list as JSON ([ADR-0007](docs/adr/0007-aircraft-and-drones.md)) | GPL-3.0 |
 
 If Peil is ever distributed together with any of them, that distribution meets their licenses for those programs and lists them here.
 
