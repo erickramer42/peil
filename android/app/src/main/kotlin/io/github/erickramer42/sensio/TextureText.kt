@@ -6,7 +6,7 @@ package io.github.erickramer42.sensio
  * newest few. The user's enrolled devices are taken out, as the list does.
  */
 object TextureText {
-    private val ORDER = listOf("access_point", "station", "ble", "bt_classic", "tpms")
+    private val ORDER = listOf("access_point", "station", "ble", "bt_classic")
 
     fun lines(picture: Picture, enrolled: Set<String>): List<String> {
         val texture = picture.texture ?: return emptyList()

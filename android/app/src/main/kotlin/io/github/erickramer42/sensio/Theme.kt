@@ -41,7 +41,7 @@ enum class Theme(val key: String, val label: String, val palette: Palette) {
             danger = argb(0xf87171),
             kinds = mapOf(
                 "ble" to argb(0x50c878), "bt_classic" to argb(0xb482ff), "access_point" to argb(0x5aa0ff),
-                "station" to argb(0x50dce6), "tpms" to argb(0xf0b43c),
+                "station" to argb(0x50dce6),
             ),
         ),
     ),
@@ -53,7 +53,7 @@ enum class Theme(val key: String, val label: String, val palette: Palette) {
             danger = argb(0xff4a38),
             kinds = mapOf(
                 "ble" to argb(0xd17d00), "bt_classic" to argb(0x9e9147), "access_point" to argb(0xffb299),
-                "station" to argb(0xb89c00), "tpms" to argb(0x9e5d47),
+                "station" to argb(0xb89c00),
             ),
         ),
     ),
@@ -65,7 +65,7 @@ enum class Theme(val key: String, val label: String, val palette: Palette) {
             danger = argb(0xff3030),
             kinds = mapOf(
                 "ble" to argb(0xff8000), "bt_classic" to argb(0xff7373), "access_point" to argb(0x9e7777),
-                "station" to argb(0xb86253), "tpms" to argb(0x9e5b18),
+                "station" to argb(0xb86253),
             ),
         ),
     ),

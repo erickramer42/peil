@@ -46,7 +46,7 @@ class Picture(
 
 /** Short names for the core's emitter kinds and tracker networks. */
 object Labels {
-    val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA", "tpms" to "TPMS")
+    val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA")
 
     val TRACKERS = mapOf(
         "apple_find_my" to "Find My",

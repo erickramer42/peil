@@ -19,17 +19,17 @@ class TextureTextTest {
         val p = picture(
             listOf(
                 emitter("ble:aa:aa:aa:00:00:01", "ble", 990, tracker = "apple_find_my"),
-                emitter("tpms:0a1b2c3d", "tpms", 995),
+                emitter("bt:dd:dd:dd:00:00:06", "bt_classic", 995, address = "global"),
             ),
             Texture(
-                counts = mapOf("ble" to 3, "tpms" to 1, "access_point" to 0),
-                new = mapOf("ble" to 1, "tpms" to 1),
+                counts = mapOf("ble" to 3, "bt_classic" to 1, "access_point" to 0),
+                new = mapOf("ble" to 1, "bt_classic" to 1),
                 randomizedWifi = 0,
-                newest = listOf("tpms:0a1b2c3d", "ble:aa:aa:aa:00:00:01"),
+                newest = listOf("bt:dd:dd:dd:00:00:06", "ble:aa:aa:aa:00:00:01"),
             ),
         )
         assertEquals(
-            listOf("Around, last 60 s: 3 BLE (1 new), 1 TPMS (1 new)", "Newest: TPMS 0a1b2c3d; BLE Find My"),
+            listOf("Around, last 60 s: 3 BLE (1 new), 1 BT (1 new)", "Newest: BT dd:dd:dd:00:00:06; BLE Find My"),
             TextureText.lines(p, emptySet()),
         )
     }

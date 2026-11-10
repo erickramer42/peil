@@ -27,14 +27,14 @@ TILE_FROM, TILE_TO = "#2fd3bf", "#0b6a64"   # teal, lit from the top left
 
 # RingView's colors per kind, and the tracker's
 KIND = {"ble": "#50c878", "bt_classic": "#b482ff", "access_point": "#5aa0ff",
-        "station": "#50dce6", "tpms": "#f0b43c"}
+        "station": "#50dce6"}
 TRACKER = "#ff5050"
 
 CX = CY = 54.0
 R = 33.0                         # the face
 RR = R * 0.88                    # the ring's radius inside it
 BANDS = (0.32, 0.56, 0.80)       # RingView.BANDS' solid rings; the outermost is dashed
-WEIGHTS = (("ble", 180), ("bt_classic", 40), ("access_point", 110), ("station", 40), ("tpms", 30))
+WEIGHTS = (("ble", 180), ("bt_classic", 40), ("access_point", 110), ("station", 40))
 
 # The dots: kind, angle (degrees, 0 = east, clockwise) and radius as a
 # fraction of RR, each inside its kind's sector. The tracker sits up and to
@@ -43,8 +43,7 @@ DOTS = (
     ("ble", 204, 0.66), ("ble", 290, 0.90), ("ble", 304, 0.62), ("ble", 328, 0.36),
     ("bt_classic", 2, 0.70),
     ("access_point", 44, 0.64), ("access_point", 92, 0.44),
-    ("station", 135, 0.50),
-    ("tpms", 166, 0.68),
+    ("station", 160, 0.50),
 )
 TRACKER_AT = (256.5, 0.45)
 

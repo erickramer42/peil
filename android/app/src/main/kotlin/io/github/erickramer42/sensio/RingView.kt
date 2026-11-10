@@ -191,7 +191,6 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             "bt_classic" to 40f,
             "access_point" to 110f,
             "station" to 40f,
-            "tpms" to 30f,
         )
 
         private val KIND_LABELS = mapOf(
@@ -199,7 +198,6 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             "bt_classic" to "BT Classic",
             "access_point" to "Wi-Fi AP",
             "station" to "Station",
-            "tpms" to "TPMS",
         )
     }
 }
@@ -210,7 +208,7 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
  * to [WEAKEST] at the edge, stronger and weaker ones held to the ends. Most
  * emitters on a drive are below -80 dBm, and a linear scale gives that band
  * the outer third of the radius, more than half the ring's area. An emitter
- * with no strength (a TPMS sensor, a Kismet record with none) goes on a rim
+ * with no strength (a Kismet record with none) goes on a rim
  * outside [WEAKEST], drawn only while something is on it.
  */
 object RingScale {
