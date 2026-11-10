@@ -394,6 +394,56 @@ fn flocks_address_block_marks_wifi_emitters_only() {
 }
 
 #[test]
+fn axons_address_block_marks_ble_adverts_only_unless_a_tracker_format_does() {
+    // Built from parts, since these prefixes are real and the rest is made up.
+    let block = "00:25:df";
+    let next_block = "00:25:e0";
+    let station = format!(
+        r#"{{"t_ns":{T0},"source":"sensio","kind":"wifi_client","addr":"{block}:00:00:05","rssi_dbm":-45}}"#
+    );
+    let classic = format!(
+        r#"{{"t_ns":{T0},"source":"sensio","kind":"bt_classic","addr":"{block}:00:00:06","rssi_dbm":-46}}"#
+    );
+    let events = events(&[
+        ble(T0, &format!("{block}:00:00:01"), -41, ""),
+        ble(T0, &format!("{}:00:00:02", block.to_uppercase()), -42, ""),
+        ble(T0, &format!("{next_block}:00:00:03"), -43, ""),
+        ap(T0, &format!("{block}:00:00:04"), -44),
+        station,
+        classic,
+        ble(
+            T0,
+            &format!("{block}:00:00:07"),
+            -47,
+            r#","service_data":[{"uuid":"FEED","data":"0102"}]"#,
+        ),
+    ]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let entries: Vec<Option<(&str, &str)>> = picture
+        .emitters
+        .iter()
+        .map(|e| e.category.map(|c| (c.category, c.entry)))
+        .collect();
+    assert_eq!(
+        entries,
+        [
+            Some(("axon-class", "axon-oui")),
+            Some(("axon-class", "axon-oui")),
+            None,
+            None,
+            None,
+            None,
+            Some(("tracker", "tile")),
+        ]
+    );
+}
+
+#[test]
 fn the_battery_packs_company_id_names_flock_class_unless_a_tracker_format_does() {
     let with = |n: u8, manufacturer: &str| {
         ble(

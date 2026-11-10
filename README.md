@@ -30,7 +30,7 @@ It reads what established sensors already see (an Android phone's own scans and 
 
 ## Status
 
-An early scaffold: its tests and CI run on synthetic input only. Not built yet: find mode, the HUD, hardware categories other than the three built (trackers, Class of Device and Flock Safety's equipment), and Kismet's event stream and packets. Nor are the rtl_433 and gpsd adapters, linking a BLE device across address rotations, fusing sources into one device, or the bridge to vehicle data. Each [ADR](docs/adr/README.md)'s Status line says what's built.
+An early scaffold: its tests and CI run on synthetic input only. Not built yet: find mode, the HUD, hardware categories other than those built (trackers, Class of Device, and Flock Safety's and Axon's equipment), and Kismet's event stream and packets. Nor are the rtl_433 and gpsd adapters, linking a BLE device across address rotations, fusing sources into one device, or the bridge to vehicle data. Each [ADR](docs/adr/README.md)'s Status line says what's built.
 
 ## How it fits together
 

@@ -19,7 +19,7 @@ use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 4;
+pub const DESCRIBE_VERSION: u32 = 5;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -536,6 +536,38 @@ fn flock_category(track: &Track) -> Option<Category> {
     Some(Category {
         category: "flock-class",
         entry,
+    })
+}
+
+/// Axon Enterprise's equipment, by the address block its BLE adverts come
+/// from (ADR-0006 section 4). The category, `axon-class`, names the maker and
+/// not the kind: the block holds Axon's body cameras, conducted energy weapons,
+/// holster sensors and vehicle units alike, and the address can't tell them
+/// apart.
+///
+/// - `axon-oui`: a BLE advert whose address is in the block 00:25:df. The
+///   IEEE's MA-L list assigns it to Axon Enterprise, Inc. (the bundled
+///   snapshot, `data/ieee-vendors.csv`, read 2026-11-09). github.com/judcrandall/lookout.py,
+///   `README.md` and `lookout.py`, matches it on BLE advertising addresses and
+///   names "an Axon bodycam, taser, holster or Axon Signal Vehicle";
+///   github.com/PoliceDetector/PoliceDetector, `police.py`, matches it the
+///   same way (both read 2026-11-09).
+///
+/// Equipment that rotates its BLE address doesn't match: Axon said in 2023
+/// that it would rotate them ("How hackers are using Bluetooth to track police
+/// activity", engadget.com, 2023-10-09, read 2026-11-09). The events carry no
+/// address type, so a random non-resolvable address that happens to start
+/// 00:25:df matches too.
+fn axon_category(track: &Track) -> Option<Category> {
+    let block = matches!(track.kind, EmitterKind::Ble)
+        && track
+            .addr
+            .as_deref()
+            .and_then(|a| a.get(..9))
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("00:25:df:"));
+    block.then_some(Category {
+        category: "axon-class",
+        entry: "axon-oui",
     })
 }
 
@@ -1069,7 +1101,9 @@ fn description(
         security: track.security,
         category: match track.tracker {
             Some((_, category)) => Some(category),
-            None => flock_category(track).or_else(|| track.device_class.and_then(classic_category)),
+            None => flock_category(track)
+                .or_else(|| axon_category(track))
+                .or_else(|| track.device_class.and_then(classic_category)),
         },
         own: None,
     }
