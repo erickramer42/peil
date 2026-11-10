@@ -533,10 +533,11 @@ class SessionService : Service() {
          * describe layer's `flock-battery-company-id` entry matches), and the
          * tracker and accessory services (Samsung's FD5A, Tile's FEED, FEEC
          * and FD84, the three the describe layer's `tile` format matches,
-         * DULT's FCB2, Google's FEAA and FE2C).
+         * DULT's FCB2, Google's FEAA and FE2C), and drone Remote ID's FFFA
+         * (ADR-0007 section 6).
          */
         val SCREEN_OFF_COMPANIES = listOf(0x004C, 0x0075, 0x00E0, 0x0006, 0x09C8)
-        val SCREEN_OFF_SERVICES = listOf(0xFD5A, 0xFEED, 0xFEEC, 0xFD84, 0xFCB2, 0xFEAA, 0xFE2C)
+        val SCREEN_OFF_SERVICES = listOf(0xFD5A, 0xFEED, 0xFEEC, 0xFD84, 0xFCB2, 0xFEAA, 0xFE2C, 0xFFFA)
     }
 }
 

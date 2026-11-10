@@ -16,6 +16,7 @@ pub mod judge;
 pub mod live;
 mod movement;
 mod rate;
+mod remote_id;
 pub mod summary;
 
 pub use describe::{

@@ -12,4 +12,10 @@ class SessionServiceTest {
             assertTrue("%04X".format(uuid), uuid in SessionService.SCREEN_OFF_SERVICES)
         }
     }
+
+    @Test
+    fun theScreenOffFilterHoldsRemoteId() {
+        // remote_id.rs: Open Drone ID's service data under 0xFFFA.
+        assertTrue(0xFFFA in SessionService.SCREEN_OFF_SERVICES)
+    }
 }

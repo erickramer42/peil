@@ -90,5 +90,12 @@ test = false
 doc = false
 bench = false
 
+[[bin]]
+name = "remote_id_advert"
+path = "fuzz_targets/remote_id_advert.rs"
+test = false
+doc = false
+bench = false
+
 [profile.release]
 debug = 1

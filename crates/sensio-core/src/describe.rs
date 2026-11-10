@@ -19,7 +19,7 @@ use crate::movement::{Fix, Window};
 
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 7;
+pub const DESCRIBE_VERSION: u32 = 8;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -220,6 +220,10 @@ pub struct Description {
     /// What an aircraft last announced, and where it is from the vehicle.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aircraft: Option<AircraftState>,
+    /// What a drone last said in its Remote ID adverts, and where it and its
+    /// operator are from the vehicle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drone: Option<DroneState>,
 }
 
 /// An aircraft's latest announcements (ADR-0007 sections 2 and 3): each
@@ -335,6 +339,189 @@ impl AircraftState {
         }
         out
     }
+}
+
+/// A drone's latest Remote ID messages (ADR-0007 section 6): each field is
+/// the latest one it sent. Positions are where the drone and its operator
+/// said they were, with distance and bearing from the vehicle's latest fix
+/// where both positions are known.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct DroneState {
+    /// The ID's type (`ODID_idtype_t`: 1 serial number, 2 CAA registration,
+    /// 3 UTM UUID, 4 specific session ID).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id_type: Option<u8>,
+    /// The aircraft's type (`ODID_uatype_t`, 0 to 15; 2 is a helicopter or
+    /// multirotor).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ua_type: Option<u8>,
+    /// Its ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uas_id: Option<String>,
+    /// Its status (`ODID_status_t`: 1 ground, 2 airborne, 3 emergency, 4
+    /// Remote ID failure).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<u8>,
+    /// Its latest position, degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lat_deg: Option<f64>,
+    /// Its latest position, degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lon_deg: Option<f64>,
+    /// When it sent that position.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_ns: Option<TimeNs>,
+    /// Geodetic altitude, meters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt_geo_m: Option<f64>,
+    /// Pressure altitude, meters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alt_baro_m: Option<f64>,
+    /// Height above takeoff or ground, meters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height_m: Option<f64>,
+    /// Horizontal speed, m/s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed_mps: Option<f64>,
+    /// Vertical speed, m/s, up positive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vertical_speed_mps: Option<f64>,
+    /// Direction of travel, degrees from true north.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direction_deg: Option<f64>,
+    /// Distance from the vehicle to the drone, meters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distance_m: Option<f64>,
+    /// Bearing from the vehicle to the drone, degrees from true north.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bearing_deg: Option<f64>,
+    /// What the operator's location is (0 takeoff, 1 live GNSS, 2 fixed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_location_type: Option<u8>,
+    /// The operator's latest position, degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_lat_deg: Option<f64>,
+    /// The operator's latest position, degrees.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_lon_deg: Option<f64>,
+    /// The operator's geodetic altitude, meters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_alt_geo_m: Option<f64>,
+    /// Distance from the vehicle to the operator, meters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_distance_m: Option<f64>,
+    /// Bearing from the vehicle to the operator, degrees from true north.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_bearing_deg: Option<f64>,
+    /// The operator's registration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operator_id: Option<String>,
+}
+
+impl DroneState {
+    /// Takes one advert's Remote ID messages, in the judge's order.
+    fn observe(&mut self, t_ns: TimeNs, messages: Vec<crate::remote_id::Message>) {
+        use crate::remote_id::Message;
+        for message in messages {
+            match message {
+                Message::BasicId {
+                    id_type,
+                    ua_type,
+                    uas_id,
+                } => {
+                    (self.id_type, self.ua_type) = (Some(id_type), Some(ua_type));
+                    self.uas_id = uas_id.or(self.uas_id.take());
+                }
+                Message::Location {
+                    status,
+                    direction_deg,
+                    speed_mps,
+                    vertical_speed_mps,
+                    position,
+                    alt_baro_m,
+                    alt_geo_m,
+                    height_m,
+                } => {
+                    self.status = status.or(self.status);
+                    self.direction_deg = direction_deg.or(self.direction_deg);
+                    self.speed_mps = speed_mps.or(self.speed_mps);
+                    self.vertical_speed_mps = vertical_speed_mps.or(self.vertical_speed_mps);
+                    self.alt_baro_m = alt_baro_m.or(self.alt_baro_m);
+                    self.alt_geo_m = alt_geo_m.or(self.alt_geo_m);
+                    self.height_m = height_m.or(self.height_m);
+                    if let Some((lat, lon)) = position {
+                        (self.lat_deg, self.lon_deg) = (Some(lat), Some(lon));
+                        self.position_ns = Some(t_ns);
+                    }
+                }
+                Message::System {
+                    operator_location_type,
+                    operator_position,
+                    operator_alt_geo_m,
+                } => {
+                    self.operator_location_type = Some(operator_location_type);
+                    if let Some((lat, lon)) = operator_position {
+                        (self.operator_lat_deg, self.operator_lon_deg) = (Some(lat), Some(lon));
+                    }
+                    self.operator_alt_geo_m = operator_alt_geo_m.or(self.operator_alt_geo_m);
+                }
+                Message::OperatorId { operator_id } => {
+                    self.operator_id = operator_id.or(self.operator_id.take());
+                }
+            }
+        }
+    }
+
+    /// This state with distances and bearings from `fix`.
+    fn seen_from(&self, fix: Option<Fix>) -> Self {
+        let mut out = self.clone();
+        let Some((_, from_lat, from_lon)) = fix else {
+            return out;
+        };
+        let from = |lat: Option<f64>, lon: Option<f64>| {
+            let (lat, lon) = (lat?, lon?);
+            Some((
+                crate::geo::distance_m(from_lat, from_lon, lat, lon),
+                crate::geo::bearing_deg(from_lat, from_lon, lat, lon),
+            ))
+        };
+        if let Some((d, b)) = from(self.lat_deg, self.lon_deg) {
+            (out.distance_m, out.bearing_deg) = (Some(d), Some(b));
+        }
+        if let Some((d, b)) = from(self.operator_lat_deg, self.operator_lon_deg) {
+            (out.operator_distance_m, out.operator_bearing_deg) = (Some(d), Some(b));
+        }
+        out
+    }
+}
+
+/// The Remote ID messages in an advert's service data, or none when none of
+/// it is Remote ID.
+fn remote_id(service: &[ServiceData]) -> Option<Vec<crate::remote_id::Message>> {
+    let mut found: Option<Vec<_>> = None;
+    for entry in service {
+        let Some(uuid) = short_uuid(&entry.uuid) else {
+            continue;
+        };
+        let Some(bytes) = hex_bytes(&entry.data) else {
+            continue;
+        };
+        if let Some(messages) = crate::remote_id::messages(&uuid, &bytes) {
+            found.get_or_insert_with(Vec::new).extend(messages);
+        }
+    }
+    found
+}
+
+/// The bytes of a hex string, or none if it isn't one.
+fn hex_bytes(hex: &str) -> Option<Vec<u8>> {
+    if hex.len() % 2 != 0 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+        .collect()
 }
 
 /// The addresses receivers reported as their own, by the device IDs they
@@ -935,6 +1122,7 @@ struct Track {
     security: Option<WifiSecurity>,
     device_class: Option<u32>,
     aircraft: Option<AircraftState>,
+    drone: Option<DroneState>,
 }
 
 impl Track {
@@ -953,6 +1141,7 @@ impl Track {
             security: None,
             device_class: None,
             aircraft: None,
+            drone: None,
         }
     }
 
@@ -992,6 +1181,11 @@ impl Track {
                 }
                 if let Some(found) = tracker(manufacturer_data, service_data) {
                     self.tracker = Some(found);
+                }
+                if let Some(messages) = remote_id(service_data) {
+                    self.drone
+                        .get_or_insert_with(DroneState::default)
+                        .observe(event.t_ns, messages);
                 }
             }
             EventKind::BtClassic {
@@ -1271,7 +1465,8 @@ fn description(
         security: track.security,
         category: match track.tracker {
             Some((_, category)) => Some(category),
-            None => flock_category(track)
+            None => remote_id_category(track)
+                .or_else(|| flock_category(track))
                 .or_else(|| axon_category(track))
                 .or_else(|| track.device_class.and_then(classic_category))
                 .or_else(|| {
@@ -1281,7 +1476,18 @@ fn description(
         },
         own: None,
         aircraft: track.aircraft.as_ref().map(|a| a.seen_from(fix)),
+        drone: track.drone.as_ref().map(|d| d.seen_from(fix)),
     }
+}
+
+/// A BLE emitter that sent Remote ID (`remote_id.rs`, ADR-0007 section 6):
+/// the category `drone`, entry `remote-id`. Anyone can send these bytes, so
+/// like the other advert formats it says what the advert claims.
+fn remote_id_category(track: &Track) -> Option<Category> {
+    track.drone.as_ref().map(|_| Category {
+        category: "drone",
+        entry: "remote-id",
+    })
 }
 
 /// Loud first: by band, then the strongest recent strength, then the device.

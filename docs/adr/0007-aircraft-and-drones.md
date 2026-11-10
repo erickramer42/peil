@@ -1,6 +1,6 @@
 # ADR-0007: Aircraft and drones
 
-Status: Accepted. Built: the readsb reader in `peil link` (`crates/sensio-sources/src/readsb_file.rs`, `--readsb`), the `readsb` normalizer and the `aircraft` event, the judge reading none of them, and aircraft in the picture with their distance and bearing from the vehicle and the emitter category (`crates/sensio-core/tests/aircraft.rs`). Not yet built: aircraft on the app's ring, the FAA registry snapshot, and the Remote ID format. Amends ADR-0001 section 1, ADR-0005 section 8 and ADR-0006 sections 2, 4 and 5.
+Status: Accepted. Built: the readsb reader in `peil link` (`crates/sensio-sources/src/readsb_file.rs`, `--readsb`), the `readsb` normalizer and the `aircraft` event, the judge reading none of them, and aircraft in the picture with their distance and bearing from the vehicle and the emitter category (`crates/sensio-core/tests/aircraft.rs`), and the Remote ID format with the drone's and the operator's positions from the vehicle (`crates/sensio-core/src/remote_id.rs`, `crates/sensio-core/tests/remote_id.rs`). Not yet built: aircraft and drones on the app's ring, and the FAA registry snapshot. Amends ADR-0001 section 1, ADR-0005 section 8 and ADR-0006 sections 2, 4 and 5.
 
 ## Context
 
