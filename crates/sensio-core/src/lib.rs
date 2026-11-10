@@ -15,10 +15,12 @@ pub mod judge;
 pub mod live;
 mod movement;
 mod rate;
+pub mod summary;
 
 pub use describe::{
     DESCRIBE_VERSION, DescribeParams, OwnAddresses, Picture, VendorTable, describe,
 };
 pub use event::{DeviceId, Event, EventKind, ParseError, TimeNs, parse_jsonl};
 pub use judge::{PersistenceRule, Place, RULE_SET_VERSION, Verdict, judge};
-pub use live::{Fatal, LATENESS_NS, Live, Normalize, RunError, run};
+pub use live::{Fatal, LATENESS_NS, Live, Normalize, RunError, run, summarize};
+pub use summary::{SUMMARY_SCHEMA, Summary};

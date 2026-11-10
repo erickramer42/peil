@@ -1,5 +1,7 @@
 //! `peil`: Peil's command-line front end.
 
+mod summary;
+
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, SocketAddr};
@@ -12,7 +14,8 @@ use anyhow::{Context, Result, anyhow};
 use clap::{Args, Parser, Subcommand};
 use sensio_core::feed::VerdictLine;
 use sensio_core::{
-    DescribeParams, Live, PersistenceRule, RunError, VendorTable, describe, judge, parse_jsonl, run,
+    DescribeParams, Live, PersistenceRule, RunError, VendorTable, describe, judge, parse_jsonl,
+    run, summarize,
 };
 use sensio_sources::Sources;
 use sensio_sources::kismet_poll::Poller;
@@ -57,6 +60,25 @@ enum Command {
         all: bool,
         /// The IEEE's MA-L, MA-M and MA-S lists (CSV, one or several
         /// concatenated), for vendor names [default: the snapshot built in].
+        #[arg(long)]
+        vendors: Option<PathBuf>,
+        #[command(flatten)]
+        rule: RuleArgs,
+    },
+    /// Summarize a saved feed: how the session ended, its coverage, stops and
+    /// route, and each verdict with its evidence.
+    Summary {
+        /// The saved feed.
+        path: PathBuf,
+        /// Judge the lines the core didn't get live, too.
+        #[arg(long)]
+        all: bool,
+        /// Text, one JSON object, or an HTML page with the route drawn from
+        /// the session's GNSS fixes (no map tiles, nothing fetched).
+        #[arg(long, value_enum, default_value_t = Format::Text)]
+        format: Format,
+        /// The IEEE's MA-L, MA-M and MA-S lists (CSV), for vendor names
+        /// [default: the snapshot built in].
         #[arg(long)]
         vendors: Option<PathBuf>,
         #[command(flatten)]
@@ -252,8 +274,56 @@ fn run_command(command: Command) -> Result<ExitCode> {
             };
             live(reader, &name, rule, all, vendors)
         }
+        Command::Summary {
+            path,
+            all,
+            format,
+            vendors,
+            rule,
+        } => summary_command(&path, all, format, vendors.as_ref(), &rule),
         Command::Link(args) => link_until_stopped(&args),
     }
+}
+
+/// `peil summary`: the saved feed at `path` summarized in `format`.
+fn summary_command(
+    path: &std::path::Path,
+    all: bool,
+    format: Format,
+    vendors: Option<&PathBuf>,
+    rule: &RuleArgs,
+) -> Result<ExitCode> {
+    let rule = rule.rule()?;
+    let vendors = vendor_table(vendors)?;
+    let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
+    let engine = Live::new(Sources, rule, all).with_describe(DescribeParams::default(), vendors);
+    let summary = match summarize(engine, BufReader::new(file)) {
+        Ok(summary) => summary,
+        Err(RunError::Fatal(fatal)) => {
+            eprintln!("Error: {}: {fatal}", path.display());
+            return Ok(ExitCode::from(EXIT_NOT_A_FEED));
+        }
+        Err(err) => return Err(err).with_context(|| format!("summarizing {}", path.display())),
+    };
+    let out = match format {
+        Format::Text => summary::text(&summary),
+        Format::Json => {
+            serde_json::to_string(&summary)?
+                + "
+"
+        }
+        Format::Html => summary::html(&summary),
+    };
+    std::io::stdout().lock().write_all(out.as_bytes())?;
+    Ok(ExitCode::SUCCESS)
+}
+
+/// How `peil summary` writes the summary.
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum Format {
+    Text,
+    Json,
+    Html,
 }
 
 /// The laptop's clock: nanoseconds since the Unix epoch, UTC.

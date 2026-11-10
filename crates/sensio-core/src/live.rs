@@ -17,6 +17,7 @@ use crate::feed::{
 };
 use crate::judge::{JudgeFold, PersistenceRule, RULE_SET_VERSION, order_key};
 use crate::rate::{self, Rate};
+use crate::summary::{Device, Flagged, RouteFold, SUMMARY_SCHEMA, Session, StopSpan, Summary};
 
 /// How far behind the latest event an event may arrive and keep its own
 /// time; an earlier one takes the latest time minus this (ADR-0005 section
@@ -78,8 +79,39 @@ pub enum RunError {
 /// Returns [`RunError`] if the feed isn't one, or reading or `emit` fails.
 pub fn run<N: Normalize>(
     mut engine: Live<N>,
-    mut reader: impl BufRead,
+    reader: impl BufRead,
     mut emit: impl FnMut(&VerdictLine) -> io::Result<()>,
+) -> Result<(), RunError> {
+    read_all(&mut engine, reader, &mut emit)?;
+    for verdict_line in &engine.finish()? {
+        emit(verdict_line).map_err(RunError::Write)?;
+    }
+    Ok(())
+}
+
+/// Reads a whole feed from `reader` as [`run`] does and gives its summary
+/// instead of the verdict stream.
+///
+/// # Errors
+///
+/// Returns [`RunError`] if the feed isn't one or reading fails.
+pub fn summarize<N: Normalize>(
+    mut engine: Live<N>,
+    reader: impl BufRead,
+) -> Result<Summary, RunError> {
+    read_all(&mut engine, reader, &mut |_| Ok(()))?;
+    if !engine.started {
+        return Err(RunError::Fatal(Fatal::Empty));
+    }
+    Ok(engine.summary())
+}
+
+/// Pushes every line of `reader` into `engine`, handing each verdict-stream
+/// line to `emit`.
+fn read_all<N: Normalize>(
+    engine: &mut Live<N>,
+    mut reader: impl BufRead,
+    emit: &mut impl FnMut(&VerdictLine) -> io::Result<()>,
 ) -> Result<(), RunError> {
     let mut line: usize = 0;
     loop {
@@ -96,9 +128,6 @@ pub fn run<N: Normalize>(
         for verdict_line in &out {
             emit(verdict_line).map_err(RunError::Write)?;
         }
-    }
-    for verdict_line in &engine.finish()? {
-        emit(verdict_line).map_err(RunError::Write)?;
     }
     Ok(())
 }
@@ -137,6 +166,10 @@ pub struct Live<N> {
     ended: bool,
     /// The addresses receivers reported as their own.
     own: OwnAddresses,
+    /// The folded GNSS fixes as a route, for the summary.
+    route: RouteFold,
+    /// The earliest event time so far.
+    first_ns: Option<TimeNs>,
 }
 
 impl<N: Normalize> Live<N> {
@@ -171,6 +204,8 @@ impl<N: Normalize> Live<N> {
             slept_ns: 0,
             ended: false,
             own: OwnAddresses::default(),
+            route: RouteFold::default(),
+            first_ns: None,
         }
     }
 
@@ -241,6 +276,83 @@ impl<N: Normalize> Live<N> {
             };
         }
         Ok(self.apply(feed_line, line))
+    }
+
+    /// The session's summary over every line pushed: its verdicts with
+    /// their devices' descriptions, coverage up to the latest time the feed
+    /// gave, its stops and route, and whether it was stopped or cut.
+    #[must_use]
+    pub fn summary(&mut self) -> Summary {
+        if let Some(now) = self.latest_boot_ns {
+            self.advance_rates(now);
+        }
+        let coverage = self.coverage(self.latest_boot_ns);
+        // Every emitter of the session, described as at its last sighting.
+        let whole = DescribeParams {
+            recent_ns: TimeNs::MAX,
+            ..self.describe.clone()
+        };
+        let at_ns = self.frontier.unwrap_or(0);
+        let mut picture = self.describe_fold.picture_with(
+            self.pending.values(),
+            std::iter::empty(),
+            at_ns,
+            &whole,
+            &self.vendors,
+        );
+        self.own.label(&mut picture);
+        let verdicts = self
+            .judge_fold
+            .verdicts_with(self.pending.values(), &self.rule)
+            .into_iter()
+            .map(|verdict| {
+                let described = picture
+                    .emitters
+                    .iter()
+                    .find(|d| d.device == verdict.device)
+                    .map(Device::from);
+                Flagged { verdict, described }
+            })
+            .collect();
+        let mut route = self.route.clone();
+        for event in self.pending.values() {
+            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+                route.observe(event.t_ns, lat_deg, lon_deg);
+            }
+        }
+        let stops = self
+            .judge_fold
+            .stops_with(self.pending.values(), &self.rule)
+            .into_iter()
+            .map(|(from_ns, to_ns, lat_deg, lon_deg)| StopSpan {
+                from_ns,
+                to_ns,
+                lat_deg,
+                lon_deg,
+            })
+            .collect();
+        Summary {
+            schema: SUMMARY_SCHEMA,
+            core: env!("CARGO_PKG_VERSION"),
+            rule_set_version: RULE_SET_VERSION,
+            describe_version: DESCRIBE_VERSION,
+            vendors: self.vendors.id().map(str::to_owned),
+            session: Session {
+                end: if self.ended {
+                    EndReason::Stopped
+                } else {
+                    EndReason::Cut
+                },
+                first_ns: self.first_ns,
+                last_ns: self.frontier,
+                min_stop_ns: self.rule.min_stop_ns,
+                stops,
+            },
+            coverage,
+            emitters: picture.texture.counts,
+            verdicts,
+            route: route.route().clone(),
+        }
     }
 
     /// Notes a line longer than [`MAX_LINE_BYTES`], which was read past.
@@ -609,6 +721,9 @@ impl<N: Normalize> Live<N> {
             kind.last_boot_ns = kind.last_boot_ns.max(boot_ns);
         }
         self.frontier = Some(self.frontier.map_or(t_ns, |f| f.max(t_ns)));
+        if !events.is_empty() {
+            self.first_ns = Some(self.first_ns.map_or(t_ns, |f| f.min(t_ns)));
+        }
         for event in events {
             self.pending.insert(order_key(&event, self.events), event);
             self.events += 1;
@@ -636,6 +751,9 @@ impl<N: Normalize> Live<N> {
                 break;
             }
             let event = entry.remove();
+            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+                self.route.observe(event.t_ns, lat_deg, lon_deg);
+            }
             self.judge_fold.observe(&event, &self.rule);
             self.describe_fold.observe(&event, &self.describe);
             self.window.push_back(event);

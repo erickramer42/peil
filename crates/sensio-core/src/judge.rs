@@ -352,6 +352,30 @@ impl JudgeFold {
     }
 }
 
+impl JudgeFold {
+    /// The vehicle's stops that lasted `min_stop_ns`, over what was read and
+    /// then `tail`, as (from, to, latitude, longitude); the fold itself is
+    /// unchanged.
+    pub(crate) fn stops_with<'a>(
+        &self,
+        tail: impl IntoIterator<Item = &'a Event>,
+        rule: &PersistenceRule,
+    ) -> Vec<(TimeNs, TimeNs, f64, f64)> {
+        let mut vehicle = self.vehicle.clone();
+        for event in tail {
+            if let EventKind::GnssFix { lat_deg, lon_deg } = event.kind {
+                vehicle.observe((event.t_ns, lat_deg, lon_deg), rule);
+            }
+        }
+        vehicle
+            .stops
+            .iter()
+            .filter(|s| s.to_ns.saturating_sub(s.from_ns) >= rule.min_stop_ns)
+            .map(|s| (s.from_ns, s.to_ns, s.lat_deg, s.lon_deg))
+            .collect()
+    }
+}
+
 /// Judges a session's events and returns its verdicts, ordered by device.
 ///
 /// The rule should pass [`PersistenceRule::validate`]; front ends check it

@@ -39,7 +39,16 @@ class MainActivity : Activity() {
     private lateinit var list: TextView
     private lateinit var startStop: Button
     private var selected: String? = null
-    private val refresh: () -> Unit = { show() }
+    private val refresh: () -> Unit = {
+        show()
+        if (summaryAfterStop && !Live.running) {
+            summaryAfterStop = false
+            SessionSummary.newestFirst(Recordings.files(this)).firstOrNull()?.let { SessionSummary.show(this, it) }
+        }
+    }
+
+    /** Set by Stop: once the service says the session stopped, its feed is closed and summarized. */
+    private var summaryAfterStop = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -194,6 +203,7 @@ class MainActivity : Activity() {
                 Options.setTheme(this, Options.theme(this).next())
                 recreate()
             },
+            "Summaries" to { SessionSummary.choose(this) },
             "About" to { About.show(this) },
         )
         Ui.choices(this, "Settings", items)
@@ -228,6 +238,7 @@ class MainActivity : Activity() {
     }
 
     private fun stop() {
+        summaryAfterStop = true
         stopService(Intent(this, SessionService::class.java))
     }
 

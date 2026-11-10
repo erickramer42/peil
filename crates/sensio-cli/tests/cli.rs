@@ -415,3 +415,62 @@ fn link_without_a_code_or_a_pairing_says_how_to_pair() {
     assert_eq!(output.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&output.stderr).contains("not paired with the phone yet"));
 }
+
+fn summary(format: &str) -> String {
+    let fixture = feed_fixture();
+    let output = peil(
+        &[
+            "summary".as_ref(),
+            "--format".as_ref(),
+            format.as_ref(),
+            fixture.as_os_str(),
+        ],
+        None,
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).expect("UTF-8 output")
+}
+
+#[test]
+fn summary_reports_the_session_and_its_verdicts_as_text() {
+    let text = summary("text");
+    assert!(text.starts_with("Session stopped\n"), "{text}");
+    assert!(text.contains("4 stops of 2 min or more"), "{text}");
+    assert!(text.contains("Verdicts (rule set "), "{text}");
+    assert!(
+        text.contains("persistence.places: ble:aa:aa:aa:00:00:01"),
+        "{text}"
+    );
+    assert!(text.contains("persistence.places: tpms:0a1b2c3d"), "{text}");
+}
+
+#[test]
+fn summary_as_json_is_one_object_with_its_schema() {
+    let json = summary("json");
+    assert_eq!(json.lines().count(), 1);
+    let v: serde_json::Value = serde_json::from_str(&json).expect("JSON");
+    assert_eq!(v["schema"], "sensio.summary/1");
+    assert_eq!(v["session"]["end"], "stopped");
+    assert_eq!(v["verdicts"].as_array().map(Vec::len), Some(2));
+}
+
+#[test]
+fn summary_as_html_draws_the_route_and_fetches_nothing() {
+    let html = summary("html");
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(html.contains("<svg") && html.contains("<polyline"));
+    // Nothing loaded from anywhere: no URLs, scripts or external styles.
+    for absent in ["http", "<script", "<link", "src="] {
+        assert!(!html.contains(absent), "{absent} in the page");
+    }
+}
+
+#[test]
+fn summary_of_a_file_that_isnt_a_feed_exits_2() {
+    let output = peil(&["summary".as_ref(), drive_fixture().as_os_str()], None);
+    assert_eq!(output.status.code(), Some(2));
+}
