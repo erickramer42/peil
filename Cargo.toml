@@ -25,6 +25,8 @@ ureq = { version = "3.5", default-features = false }
 sha2 = "0.10"
 # Raw deflate, for the bundled aircraft registry's blocks.
 miniz_oxide = "0.8"
+# Drone Remote ID (ASTM F3411) decoding, no_std.
+remoteid = { version = "0.3.2", default-features = false }
 insta = { version = "1", features = ["json"] }
 proptest = "1"
 

@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 miniz_oxide.workspace = true
+remoteid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
