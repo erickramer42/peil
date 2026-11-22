@@ -65,7 +65,7 @@ class ThemeTest {
 
     @Test
     fun everyKindHasAColorInEveryTheme() {
-        val kinds = setOf("ble", "bt_classic", "access_point", "station")
+        val kinds = setOf("ble", "bt_classic", "access_point", "station", "aircraft")
         for (theme in Theme.entries) assertEquals(theme.label, kinds, theme.palette.kinds.keys)
     }
 

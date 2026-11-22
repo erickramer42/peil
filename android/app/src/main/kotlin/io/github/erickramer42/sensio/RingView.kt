@@ -18,7 +18,9 @@ import kotlin.math.sin
  * distance. Its angle is its kind's sector, never a direction; nothing here
  * knows where an emitter is. Color is the kind;
  * a tracker takes the theme's danger color and a halo, a shape as well as a
- * color, since in Night nearly everything is red. A tap on a dot selects it,
+ * color, since in Night nearly everything is red. Aircraft have a sector on
+ * the rim, since their dBFS is on no dBm scale (ADR-0007 section 2); a drone
+ * stays in BLE's sector at its strength, a square in the aircraft color. A tap on a dot selects it,
  * and the selected dot gets a ring in the text color; [onTap] hears the tapped
  * device, or null for a tap away from every dot. Colors come from [palette].
  */
@@ -148,8 +150,7 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             val radius = r * RingScale.place(e, rim, fr)
             val x = cx + radius * cos(angle).toFloat()
             val y = cy + radius * sin(angle).toFloat()
-            dot.color = if (e.tracker != null) palette.danger else palette.kinds[e.kind] ?: palette.textDim
-            canvas.drawCircle(x, y, (if (e.tracker != null) 6f else 4.5f) * density, dot)
+            mark(canvas, e, x, y, if (e.tracker != null) 6f else 4.5f)
             if (e.tracker != null) canvas.drawCircle(x, y, 11 * density, halo)
             if (e.device == selected) canvas.drawCircle(x, y, 15 * density, selectedRing)
             drawn.add(Spot(e.device, x, y))
@@ -204,9 +205,21 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
         val a = Math.toRadians(toward.toDouble())
         val x = cx + radius * cos(a).toFloat()
         val y = cy + radius * sin(a).toFloat()
-        dot.color = if (target.tracker != null) palette.danger else palette.kinds[target.kind] ?: palette.textDim
-        canvas.drawCircle(x, y, 6 * density, dot)
+        mark(canvas, target, x, y, 6f)
         canvas.drawCircle(x, y, 15 * density, selectedRing)
+    }
+
+    /** An emitter's dot of [radius] dp: a square for a drone, a circle for the rest. */
+    private fun mark(canvas: Canvas, e: Emitter, x: Float, y: Float, radius: Float) {
+        dot.color = when {
+            e.tracker != null -> palette.danger
+            e.drone != null -> palette.kinds["aircraft"] ?: palette.textDim
+            else -> palette.kinds[e.kind] ?: palette.textDim
+        }
+        val half = radius * density
+        // A square of the circle's area, so a drone doesn't read as louder.
+        if (e.drone != null) canvas.drawRect(x - 0.89f * half, y - 0.89f * half, x + 0.89f * half, y + 0.89f * half, dot)
+        else canvas.drawCircle(x, y, half, dot)
     }
 
     private fun outlined(canvas: Canvas, text: String, x: Float, y: Float, paint: Paint) {
@@ -254,6 +267,7 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             "bt_classic" to 40f,
             "access_point" to 110f,
             "station" to 40f,
+            "aircraft" to 40f,
         )
 
         private val KIND_LABELS = mapOf(
@@ -261,6 +275,7 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             "bt_classic" to "BT Classic",
             "access_point" to "Wi-Fi AP",
             "station" to "Station",
+            "aircraft" to "Aircraft",
         )
     }
 }

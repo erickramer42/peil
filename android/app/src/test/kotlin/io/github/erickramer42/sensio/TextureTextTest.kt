@@ -22,14 +22,14 @@ class TextureTextTest {
                 emitter("bt:dd:dd:dd:00:00:06", "bt_classic", 995, address = "global"),
             ),
             Texture(
-                counts = mapOf("ble" to 3, "bt_classic" to 1, "access_point" to 0),
+                counts = mapOf("ble" to 3, "bt_classic" to 1, "access_point" to 0, "aircraft" to 2),
                 new = mapOf("ble" to 1, "bt_classic" to 1),
                 randomizedWifi = 0,
                 newest = listOf("bt:dd:dd:dd:00:00:06", "ble:aa:aa:aa:00:00:01"),
             ),
         )
         assertEquals(
-            listOf("Around, last 60 s: 3 BLE (1 new), 1 BT (1 new)", "Newest: BT dd:dd:dd:00:00:06; BLE Find My"),
+            listOf("Around, last 60 s: 3 BLE (1 new), 1 BT (1 new), 2 AIR", "Newest: BT dd:dd:dd:00:00:06; BLE Find My"),
             TextureText.lines(p, emptySet()),
         )
     }

@@ -25,7 +25,7 @@ _*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
 
 ## Status
 
-An early scaffold: its tests and CI run on synthetic input only. Not built yet: aircraft and drones on the app's ring, find mode's camera view, the gpsd adapter and Kismet's event stream. Nor are linking a BLE device across address rotations or the bridge to vehicle data. rtl_433 is unscheduled; tire-pressure sensors are not pursued. Each [ADR](docs/adr/README.md)'s Status line says what's built.
+An early scaffold: its tests and CI run on synthetic input only. Not built yet: find mode's camera view, the gpsd adapter and Kismet's event stream. Nor are linking a BLE device across address rotations or the bridge to vehicle data. rtl_433 is unscheduled; tire-pressure sensors are not pursued. Each [ADR](docs/adr/README.md)'s Status line says what's built.
 
 ## How it fits together
 

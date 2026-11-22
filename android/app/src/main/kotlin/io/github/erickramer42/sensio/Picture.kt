@@ -23,6 +23,55 @@ class Emitter(
     val categoryEntry: String? = null,
     /** The receiver that gave this address as its own; a label only, since another device can copy an address. */
     val own: String? = null,
+    /** What an aircraft last announced and where it is from the vehicle; null for any other kind. */
+    val aircraft: Aircraft? = null,
+    /** What a drone's Remote ID adverts said; null for an emitter that sent none. */
+    val drone: Drone? = null,
+)
+
+/**
+ * An aircraft's latest announcements (ADR-0007), in the units the core gives:
+ * feet and knots, as aviation states them, and meters from the vehicle.
+ * Bearings are degrees clockwise from true north.
+ */
+class Aircraft(
+    val callsign: String? = null,
+    val altBaroFt: Long? = null,
+    val onGround: Boolean = false,
+    val groundSpeedKt: Double? = null,
+    val trackDeg: Double? = null,
+    val distanceM: Double? = null,
+    val bearingDeg: Double? = null,
+    val squawk: String? = null,
+    val emergency: String? = null,
+    val signalDbfs: Double? = null,
+    /** The FAA snapshot's answer: null outside the US block, else found or not. */
+    val registry: Registration? = null,
+)
+
+/** The FAA snapshot's entry for an aircraft; [found] false when its address is in the US block but not listed. */
+class Registration(
+    val found: Boolean,
+    val nNumber: String? = null,
+    val make: String? = null,
+    val model: String? = null,
+    val year: Long? = null,
+    /** The registrant's name, which the snapshot keeps only for an organization. */
+    val owner: String? = null,
+)
+
+/** A drone's latest Remote ID messages (ADR-0007 section 6), meters and m/s, bearings from true north. */
+class Drone(
+    val uasId: String? = null,
+    /** `ODID_status_t`: 1 ground, 2 airborne, 3 emergency, 4 Remote ID failure. */
+    val status: Long? = null,
+    val heightM: Double? = null,
+    val speedMps: Double? = null,
+    val distanceM: Double? = null,
+    val bearingDeg: Double? = null,
+    val operatorDistanceM: Double? = null,
+    val operatorBearingDeg: Double? = null,
+    val operatorId: String? = null,
 )
 
 /** The core's ambient texture: emitters in the recent window by kind, those first seen in it, and the newest. */
@@ -46,7 +95,7 @@ class Picture(
 
 /** Short names for the core's emitter kinds and tracker networks. */
 object Labels {
-    val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA")
+    val KINDS = mapOf("ble" to "BLE", "bt_classic" to "BT", "access_point" to "AP", "station" to "STA", "aircraft" to "AIR")
 
     val TRACKERS = mapOf(
         "apple_find_my" to "Find My",
@@ -87,6 +136,43 @@ object VerdictStream {
 
     private fun JSONObject.number(key: String): Double? = if (has(key) && !isNull(key)) optDouble(key) else null
 
+    private fun JSONObject.whole(key: String): Long? = if (has(key) && !isNull(key)) optLong(key) else null
+
+    private fun aircraft(a: JSONObject) = Aircraft(
+        callsign = a.text("callsign"),
+        altBaroFt = a.whole("alt_baro_ft"),
+        onGround = a.optBoolean("on_ground"),
+        groundSpeedKt = a.number("ground_speed_kt"),
+        trackDeg = a.number("track_deg"),
+        distanceM = a.number("distance_m"),
+        bearingDeg = a.number("bearing_deg"),
+        squawk = a.text("squawk"),
+        emergency = a.text("emergency"),
+        signalDbfs = a.number("signal_dbfs"),
+        registry = a.optJSONObject("registry")?.let { r ->
+            Registration(
+                found = r.optString("lookup") == "found",
+                nNumber = r.text("n_number"),
+                make = r.text("make"),
+                model = r.text("model"),
+                year = r.whole("year"),
+                owner = r.text("owner"),
+            )
+        },
+    )
+
+    private fun drone(d: JSONObject) = Drone(
+        uasId = d.text("uas_id"),
+        status = d.whole("status"),
+        heightM = d.number("height_m"),
+        speedMps = d.number("speed_mps"),
+        distanceM = d.number("distance_m"),
+        bearingDeg = d.number("bearing_deg"),
+        operatorDistanceM = d.number("operator_distance_m"),
+        operatorBearingDeg = d.number("operator_bearing_deg"),
+        operatorId = d.text("operator_id"),
+    )
+
     private fun find(o: JSONObject): FindAnswer {
         val sectors = o.optJSONArray("sectors")
         return FindAnswer(
@@ -124,6 +210,8 @@ object VerdictStream {
                 firstSeenNs = e.optLong("first_seen_ns"),
                 categoryEntry = e.optJSONObject("category")?.optString("entry")?.ifEmpty { null },
                 own = e.text("own"),
+                aircraft = e.optJSONObject("aircraft")?.let(::aircraft),
+                drone = e.optJSONObject("drone")?.let(::drone),
             )
         }
         val recentNs = o.optLong("recent_ns")

@@ -230,6 +230,8 @@ class MainActivity : Activity() {
             e.own?.let { "$it's own" },
             Labels.tracker(e),
             e.category,
+            e.aircraft?.let { a -> listOfNotNull(a.callsign, a.registry?.nNumber).joinToString(" ").ifEmpty { null } },
+            e.drone?.uasId,
             e.ssid?.let { "\"$it\"" },
             e.vendor,
             e.security,
