@@ -21,7 +21,7 @@ use crate::movement::{Fix, Window};
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats, and the FAA registry snapshot, which nothing else can
 /// supply); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 9;
+pub const DESCRIBE_VERSION: u32 = 10;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -122,7 +122,9 @@ pub enum Band {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Address {
-    /// A Wi-Fi address with the locally administered bit clear: a vendor block.
+    /// A Wi-Fi address with the locally administered bit clear, or any
+    /// Bluetooth Classic address (BR/EDR addresses aren't randomized, so the
+    /// bit means nothing there): looked up as a vendor block.
     Global,
     /// A Wi-Fi address with the locally administered bit set: no vendor.
     Randomized,
@@ -1464,7 +1466,7 @@ fn description(
     let address = match track.kind {
         EmitterKind::Ble => Address::Ble,
         EmitterKind::Aircraft => Address::Aircraft,
-        EmitterKind::AccessPoint | EmitterKind::Station | EmitterKind::BtClassic
+        EmitterKind::AccessPoint | EmitterKind::Station
             if u8::from_str_radix(track.addr.get(..2).unwrap_or("00"), 16)
                 .is_ok_and(|b| b & 0x02 != 0) =>
         {

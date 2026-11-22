@@ -91,6 +91,34 @@ fn vendors_come_from_the_longest_block_and_randomized_addresses_have_none() {
 }
 
 #[test]
+fn a_bluetooth_classic_address_is_never_randomized() {
+    // BR/EDR addresses don't randomize, so the 0x02 bit counts for Wi-Fi only.
+    let classic = format!(
+        r#"{{"t_ns":{T0},"source":"sensio","kind":"bt_classic","addr":"ee:ee:ee:00:00:02","rssi_dbm":-61}}"#
+    );
+    let events = events(&[ap(T0, "ee:ee:ee:00:00:01", -60), classic]);
+    let picture = describe(
+        &events,
+        T0,
+        &DescribeParams::default(),
+        &VendorTable::default(),
+    );
+    let seen: Vec<(&str, Address)> = picture
+        .emitters
+        .iter()
+        .map(|e| (e.device.as_str(), e.address))
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("wifi:ee:ee:ee:00:00:01", Address::Randomized),
+            ("bt:ee:ee:ee:00:00:02", Address::Global),
+        ]
+    );
+    assert_eq!(picture.texture.randomized_wifi, 1);
+}
+
+#[test]
 fn the_bundled_registry_parses_and_names_a_block_from_each_list() {
     let vendors = VendorTable::bundled().expect("the bundled snapshot parses");
     assert!(vendors.id().is_some_and(|id| id.starts_with("fnv1a64:")));
