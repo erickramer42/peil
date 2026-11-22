@@ -1,8 +1,9 @@
 //! Drone Remote ID (ADR-0007 section 6): the input as a BLE advert's service
 //! data under 0xFFFA, with and without the application code in front, and
-//! as a message pack, through `describe`. Any bytes never panic, and every
-//! distance, bearing, speed and position the picture gives is finite and in
-//! its range.
+//! as a message pack, through `describe`, heard three times a second apart
+//! with a strength and a fix, so the strength check runs too. Any bytes never
+//! panic, and every distance, bearing, speed, position and limit the picture
+//! gives is finite and in its range.
 
 #![no_main]
 
@@ -18,17 +19,19 @@ fn hex(bytes: &[u8]) -> String {
 fn check(data: &[u8]) {
     // The core bounds service data at 255 bytes.
     let data = &data[..data.len().min(255)];
-    let lines = [
-        format!(r#"{{"t_ns":{T0},"source":"android","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}}"#),
-        format!(
-            r#"{{"t_ns":{T0},"source":"android","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","service_data":[{{"uuid":"fffa","data":"{}"}}]}}"#,
+    let mut lines = Vec::new();
+    for i in 0..3 {
+        let t = T0 + i * 1_000_000_000;
+        lines.push(format!(r#"{{"t_ns":{t},"source":"android","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}}"#));
+        lines.push(format!(
+            r#"{{"t_ns":{t},"source":"android","kind":"ble_advert","addr":"aa:aa:aa:00:00:01","rssi_dbm":-70,"service_data":[{{"uuid":"fffa","data":"{}"}}]}}"#,
             hex(data)
-        ),
-    ];
+        ));
+    }
     let Ok(events): Result<Vec<Event>, _> = parse_jsonl(lines.join("\n").as_bytes()) else {
         return;
     };
-    let picture = describe(&events, T0, &DescribeParams::default(), &VendorTable::default());
+    let picture = describe(&events, T0 + 2_000_000_000, &DescribeParams::default(), &VendorTable::default());
     for e in &picture.emitters {
         let Some(d) = &e.drone else {
             continue;
@@ -41,6 +44,10 @@ fn check(data: &[u8]) {
         }
         for lat in [d.lat_deg, d.operator_lat_deg].into_iter().flatten() {
             assert!((-90.0..=90.0).contains(&lat), "{d:?}");
+        }
+        if let Some(c) = &d.strength_check {
+            assert!(c.limit_dbm.is_finite() && c.claimed_distance_m.is_finite() && c.claimed_distance_m >= 0.0, "{c:?}");
+            assert!(c.readings >= 3 && c.dbm == -70.0, "{c:?}");
         }
     }
 }

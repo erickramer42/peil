@@ -300,6 +300,35 @@ fn an_advert_without_a_position_isnt_a_reading() {
 }
 
 #[test]
+fn a_fix_exactly_at_its_age_limit_still_counts() {
+    let mut lines = vec![fix_at(T0)];
+    lines.extend((0..3).map(|_| claim(T0 + 2 * S, 60.03, -70)));
+    assert_eq!(check_of(&lines).map(|c| c.readings), Some(3));
+}
+
+#[test]
+fn a_reading_exactly_a_window_before_the_latest_still_counts() {
+    let lines: Vec<String> = [0, 5, 10]
+        .into_iter()
+        .flat_map(|s| [fix_at(T0 + s * S), claim(T0 + s * S, 60.03, -70)])
+        .collect();
+    assert_eq!(check_of(&lines).map(|c| c.readings), Some(3));
+}
+
+/// A flood of adverts keeps the newest 64 readings, so a drone's state is bounded.
+#[test]
+fn a_flood_of_adverts_keeps_the_newest_64_readings() {
+    let lines: Vec<String> = (0..100)
+        .flat_map(|i| {
+            let t = T0 + i * S / 10;
+            [fix_at(t), claim(t, 60.03, -70)]
+        })
+        .collect();
+    let check = check_of(&lines).expect("a check");
+    assert_eq!((check.readings, check.latest_ns), (64, T0 + 99 * S / 10));
+}
+
+#[test]
 fn a_reading_isnt_compared_from_a_fix_older_than_its_age_limit() {
     let mut lines = vec![fix_at(T0)];
     lines.extend((3..6).map(|s| claim(T0 + s * S, 60.03, -70)));
