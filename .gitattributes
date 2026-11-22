@@ -1,0 +1,3 @@
+# The bundled tables are read byte for byte and named by their hash, so a
+# checkout never converts their line endings.
+crates/sensio-core/data/** -text
