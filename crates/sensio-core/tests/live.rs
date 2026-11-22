@@ -338,6 +338,48 @@ fn an_event_later_than_the_window_takes_its_edge_and_is_counted() {
     assert_eq!(coverages(&lines)[0].sources[0].late, 1);
 }
 
+/// One wrong stamp far ahead (a corrupt boot time, a remote time in the
+/// wrong unit) is rejected, so it can't move the window's edge past the
+/// events after it, and they keep their own times.
+#[test]
+fn a_time_far_ahead_of_the_feed_is_rejected_and_later_events_keep_theirs() {
+    let minute = 60_000_000_000;
+    let ahead = 31 * 24 * 60 * minute;
+    let remote = serde_json::to_string(&FeedLine::Line {
+        seq: 3,
+        boot_ns: 2 * minute,
+        source: "sensio".to_owned(),
+        receiver: Some("rear-pi".to_owned()),
+        remote_ns: Some(ahead),
+        raw: BLE.to_owned(),
+        withheld: false,
+    })
+    .expect("serializes");
+    let lines = live(
+        &feed(&[
+            line(1, minute, None, BLE),
+            line(2, ahead, None, BLE),
+            r#"{"type":"offset","receiver":"rear-pi","offset_ns":0,"uncertainty_ns":1}"#.to_owned(),
+            remote,
+            judge_at(ahead),
+            line(4, 2 * minute, None, BLE),
+            judge_at(2 * minute + 1),
+        ]),
+        false,
+    );
+    assert_eq!(
+        rejections(&lines),
+        [
+            (4, Some(2), "time far ahead of the feed's"),
+            (6, Some(3), "time far ahead of the feed's"),
+            (7, None, "time far ahead of the feed's"),
+        ]
+    );
+    let (_, picture) = pictures(&lines)[0];
+    assert_eq!(picture.emitters[0].last_seen_ns, BOOT_TO_UTC + 2 * minute);
+    assert_eq!(coverages(&lines)[0].sources[0].late, 0);
+}
+
 #[test]
 fn a_judge_line_earlier_than_the_window_answers_at_its_edge() {
     let minute = 60_000_000_000;

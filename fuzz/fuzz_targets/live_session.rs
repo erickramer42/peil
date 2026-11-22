@@ -15,6 +15,7 @@ use sensio_core::feed::{
     ClockBasis, EndReason, FEED_SCHEMA, FeedLine, MAX_OWN, OwnAddress, OwnRadio, RadioState,
     VerdictLine,
 };
+use sensio_core::live::MAX_AHEAD_NS;
 use sensio_core::{Event, EventKind, Live, TimeNs, Verdict, judge, run};
 use sensio_fuzz::{Kind, Rule, Time};
 use sensio_sources::Sources;
@@ -98,6 +99,9 @@ struct Model {
     /// Whether a valid `end` line was written: every line after it is
     /// rejected and changes nothing else.
     ended: bool,
+    /// The latest boot time of an accepted line; a time more than
+    /// `MAX_AHEAD_NS` past it is rejected.
+    latest_boot: Option<TimeNs>,
 }
 
 impl Model {
@@ -110,6 +114,15 @@ impl Model {
         clock_utc
             .checked_add(boot.checked_sub(clock_boot)?)
             .filter(|&t| t >= 0)
+    }
+
+    fn far_ahead(&self, boot: TimeNs) -> bool {
+        self.latest_boot
+            .is_some_and(|latest| boot.saturating_sub(latest) > MAX_AHEAD_NS)
+    }
+
+    fn saw(&mut self, boot: TimeNs) {
+        self.latest_boot = Some(self.latest_boot.map_or(boot, |t| t.max(boot)));
     }
 }
 
@@ -149,9 +162,10 @@ fuzz_target!(|session: Session| {
                     Utc::Consistent => boot_ns.saturating_add(BOOT_TO_UTC),
                     Utc::Raw(t) => *t,
                 };
-                if boot_ns < 0 || utc_ns < 0 {
+                if m.far_ahead(boot_ns) || boot_ns < 0 || utc_ns < 0 {
                     m.rejected += 1;
                 } else {
+                    m.saw(boot_ns);
                     m.clock = Some((boot_ns, utc_ns));
                 }
                 json(&FeedLine::Clock {
@@ -214,6 +228,11 @@ fuzz_target!(|session: Session| {
                         let t_ns = (boot_ns >= 0 && remote_ns.is_none_or(|t| t >= 0))
                             .then(|| m.utc(boot_ns, remote_ns, receiver.as_deref()))
                             .flatten();
+                        let remote_boot = remote_ns
+                            .zip(receiver.as_deref().and_then(|r| m.offsets.get(r)))
+                            .and_then(|(remote, &offset)| remote.checked_add(offset));
+                        let far = m.far_ahead(boot_ns) || remote_boot.is_some_and(|b| m.far_ahead(b));
+                        let t_ns = t_ns.filter(|_| !far);
                         // The normalizer's own parse: a non-finite float was written as null.
                         let parsed: Option<EventKind> = serde_json::from_str(&raw).ok();
                         let event = t_ns.zip(parsed).map(|(t_ns, kind)| Event {
@@ -223,7 +242,10 @@ fuzz_target!(|session: Session| {
                             kind,
                         });
                         match event.filter(|e| e.validate().is_ok()) {
-                            Some(event) => m.events.push(event),
+                            Some(event) => {
+                                m.saw(boot_ns);
+                                m.events.push(event);
+                            }
                             None => m.rejected += 1,
                         }
                     }
@@ -232,9 +254,10 @@ fuzz_target!(|session: Session| {
             }
             Op::Judge(boot) => {
                 let boot_ns = boot.at(&mut cursor);
-                if boot_ns < 0 {
+                if m.far_ahead(boot_ns) || boot_ns < 0 {
                     m.rejected += 1;
                 } else {
+                    m.saw(boot_ns);
                     m.answers.push(judge(&m.events, &rule));
                 }
                 json(&FeedLine::Judge { boot_ns })
@@ -252,8 +275,10 @@ fuzz_target!(|session: Session| {
             }
             Op::Slept(boot, slept_ns) => {
                 let boot_ns = boot.at(&mut cursor);
-                if boot_ns < 0 || *slept_ns < 0 {
+                if m.far_ahead(boot_ns) || boot_ns < 0 || *slept_ns < 0 {
                     m.rejected += 1;
+                } else {
+                    m.saw(boot_ns);
                 }
                 json(&FeedLine::Slept {
                     boot_ns,
@@ -268,9 +293,10 @@ fuzz_target!(|session: Session| {
                 let key = (radio.clone(), receiver.clone());
                 let named = is_label(&radio) && receiver.as_deref().is_none_or(is_label);
                 let back = m.radios.get(&key).is_some_and(|&(_, since)| boot_ns < since);
-                if !named || boot_ns < 0 || back {
+                if m.far_ahead(boot_ns) || !named || boot_ns < 0 || back {
                     m.rejected += 1;
                 } else {
+                    m.saw(boot_ns);
                     m.radios.insert(key, (state, boot_ns));
                 }
                 json(&FeedLine::Radio {
@@ -310,12 +336,15 @@ fuzz_target!(|session: Session| {
                         }
                     })
                     .collect();
-                let bad = boot_ns < 0
+                let bad = m.far_ahead(boot_ns)
+                    || boot_ns < 0
                     || !is_label(&receiver)
                     || addresses.len() > MAX_OWN
                     || addresses.iter().any(|a| a.address.len() != 17);
                 if bad {
                     m.rejected += 1;
+                } else {
+                    m.saw(boot_ns);
                 }
                 json(&FeedLine::Own {
                     boot_ns,
@@ -325,9 +354,10 @@ fuzz_target!(|session: Session| {
             }
             Op::End(boot) => {
                 let boot_ns = boot.at(&mut cursor);
-                if boot_ns < 0 {
+                if m.far_ahead(boot_ns) || boot_ns < 0 {
                     m.rejected += 1;
                 } else {
+                    m.saw(boot_ns);
                     m.ended = true;
                 }
                 json(&FeedLine::End { boot_ns })

@@ -26,6 +26,12 @@ use crate::summary::{Device, Flagged, RouteFold, SUMMARY_SCHEMA, Session, StopSp
 /// layer's state and no longer held one by one.
 pub const LATENESS_NS: TimeNs = 600 * 1_000_000_000;
 
+/// How far past the latest boot time the feed has given a line's time may
+/// be, 30 days (ADR-0005 section 3 as amended): one further ahead is
+/// rejected, so a wrong stamp (a remote time in the wrong unit, a corrupt
+/// boot time) can't move the window's edge past every later event.
+pub const MAX_AHEAD_NS: TimeNs = 30 * 24 * 3600 * 1_000_000_000;
+
 /// Turns one source's raw text into what it observed.
 pub trait Normalize {
     /// The events in `raw`, a line received from `source`.
@@ -410,8 +416,8 @@ impl<N: Normalize> Live<N> {
     fn apply(&mut self, feed_line: usize, line: FeedLine) -> Vec<VerdictLine> {
         let reject =
             |this: &mut Self, reason: &str| this.reject_feed_line(feed_line, reason.to_owned());
-        if self.ended {
-            return reject(self, "a line after the feed's end");
+        if let Some(reason) = self.refused(&line) {
+            return reject(self, reason);
         }
         match line {
             FeedLine::Start { .. } => reject(self, "a second start line"),
@@ -672,6 +678,24 @@ impl<N: Normalize> Live<N> {
     }
 
     /// Notes a valid boot-clock time the feed gave, for the final coverage.
+    /// Why a line is refused before it is read: it follows the feed's end,
+    /// or its time is far ahead.
+    fn refused(&self, line: &FeedLine) -> Option<&'static str> {
+        if self.ended {
+            return Some("a line after the feed's end");
+        }
+        boot_of(line)
+            .is_some_and(|boot| self.far_ahead(boot))
+            .then_some("time far ahead of the feed's")
+    }
+
+    /// Whether `boot_ns` is more than [`MAX_AHEAD_NS`] past the latest boot
+    /// time seen.
+    fn far_ahead(&self, boot_ns: TimeNs) -> bool {
+        self.latest_boot_ns
+            .is_some_and(|latest| boot_ns.saturating_sub(latest) > MAX_AHEAD_NS)
+    }
+
     fn saw(&mut self, boot_ns: TimeNs) {
         self.latest_boot_ns = Some(self.latest_boot_ns.map_or(boot_ns, |t| t.max(boot_ns)));
     }
@@ -720,6 +744,13 @@ impl<N: Normalize> Live<N> {
             self.entry(key.0, key.1).rejected += 1;
             return rejected("no clock line before it, or its time maps out of range");
         };
+        let remote_boot = remote_ns
+            .zip(key.1.as_deref().and_then(|r| self.offsets.get(r)))
+            .and_then(|(remote, &offset)| remote.checked_add(offset));
+        if self.far_ahead(boot_ns) || remote_boot.is_some_and(|b| self.far_ahead(b)) {
+            self.entry(key.0, key.1).rejected += 1;
+            return rejected("time far ahead of the feed's");
+        }
         let t_ns = self.edge().map_or(mapped_ns, |edge| mapped_ns.max(edge));
         let kinds = match self.normalizer.normalize(&key.0, raw) {
             Ok(kinds) => kinds,
@@ -891,6 +922,24 @@ impl<N: Normalize> Live<N> {
 
 /// Adds the time from `track`'s state change up to `now` to that state's
 /// total; a `now` before the change adds nothing.
+/// The boot time a feed line carries, other than an event line's, which
+/// `apply_line` checks with its remote stamp.
+fn boot_of(line: &FeedLine) -> Option<TimeNs> {
+    match line {
+        FeedLine::Own { boot_ns, .. }
+        | FeedLine::End { boot_ns }
+        | FeedLine::Clock { boot_ns, .. }
+        | FeedLine::Judge { boot_ns }
+        | FeedLine::Find { boot_ns, .. }
+        | FeedLine::Slept { boot_ns, .. }
+        | FeedLine::Radio { boot_ns, .. } => Some(*boot_ns),
+        FeedLine::Start { .. }
+        | FeedLine::Offset { .. }
+        | FeedLine::Line { .. }
+        | FeedLine::Dropped { .. } => None,
+    }
+}
+
 fn close_interval(track: &mut RadioCoverage, now: TimeNs) {
     let spent = now.saturating_sub(track.since_boot_ns).max(0);
     match track.state {
