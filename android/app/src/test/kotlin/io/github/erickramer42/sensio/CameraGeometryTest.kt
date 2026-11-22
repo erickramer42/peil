@@ -45,4 +45,13 @@ class CameraGeometryTest {
         assertEquals(1920 to 1080, CameraGeometry.previewSize(listOf(1920 to 1080, 1280 to 720), 4.0 / 3.0))
         assertNull(CameraGeometry.previewSize(emptyList(), 4.0 / 3.0))
     }
+
+    @Test
+    fun wordsTooWideForTheViewWrapIntoEvenLines() {
+        val chars = { s: String -> s.length.toFloat() }
+        val hint = "Raise the phone to look through it"
+        assertEquals(listOf(hint), CameraGeometry.lines(hint, 40f, chars))
+        assertEquals(listOf("Raise the phone to", "look through it"), CameraGeometry.lines(hint, 30f, chars))
+        assertEquals(listOf("a", "wordtoolong", "b"), CameraGeometry.lines("a wordtoolong b", 5f, chars))
+    }
 }

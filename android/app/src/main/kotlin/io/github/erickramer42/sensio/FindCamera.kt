@@ -219,18 +219,6 @@ class FindCamera(context: Context, private val palette: Palette) : FrameLayout(c
         private var pending = true
         private var closing = false
 
-        init {
-            handler.post {
-                try {
-                    manager.openCamera(id, callback, handler)
-                } catch (e: Exception) {
-                    pending = false
-                    report("The camera wouldn't open")
-                    if (closing) thread.quitSafely()
-                }
-            }
-        }
-
         private val callback = object : CameraDevice.StateCallback() {
             override fun onOpened(cam: CameraDevice) {
                 pending = false
@@ -246,6 +234,19 @@ class FindCamera(context: Context, private val palette: Palette) : FrameLayout(c
             override fun onDisconnected(cam: CameraDevice) = ended(cam, "Another app took the camera")
 
             override fun onError(cam: CameraDevice, error: Int) = ended(cam, "The camera stopped (error $error)")
+        }
+
+        // After callback: the camera thread can run this post before the constructor reaches a later initializer.
+        init {
+            handler.post {
+                try {
+                    manager.openCamera(id, callback, handler)
+                } catch (e: Exception) {
+                    pending = false
+                    report("The camera wouldn't open")
+                    if (closing) thread.quitSafely()
+                }
+            }
         }
 
         private fun ended(cam: CameraDevice, why: String) {
@@ -376,13 +377,17 @@ class FindCamera(context: Context, private val palette: Palette) : FrameLayout(c
             words(canvas, text, w / 2, h - 12 * density)
         }
 
-        /** [text] centered on [x], kept inside the view, outlined so it reads over the preview. */
+        /** [text] centered on [x] with its last line on [y], wrapped to the view's width and kept inside it, outlined so it reads over the preview. */
         private fun words(canvas: Canvas, text: String, x: Float, y: Float) {
-            val half = label.measureText(text) / 2
             val pad = 8 * density
-            val at = x.coerceIn(half + pad, max(half + pad, width - half - pad)) - half
-            canvas.drawText(text, at, y, outline)
-            canvas.drawText(text, at, y, label)
+            val lines = CameraGeometry.lines(text, width - 2 * pad) { label.measureText(it) }
+            lines.forEachIndexed { i, line ->
+                val half = label.measureText(line) / 2
+                val at = x.coerceIn(half + pad, max(half + pad, width - half - pad)) - half
+                val baseline = y - (lines.size - 1 - i) * label.fontSpacing
+                canvas.drawText(line, at, baseline, outline)
+                canvas.drawText(line, at, baseline, label)
+            }
         }
     }
 }
@@ -448,5 +453,37 @@ object CameraGeometry {
         val landscape = sizes.map { (a, b) -> max(a, b) to min(a, b) }.filter { it.second > 0 && it.first <= 1920 }
         val matching = landscape.filter { abs(it.first.toDouble() / it.second / aspect - 1) <= 0.02 }
         return (matching.ifEmpty { landscape }).maxByOrNull { it.first.toLong() * it.second }
+    }
+
+    /**
+     * [text] broken at spaces into the fewest lines no wider than [room] by
+     * [measure], their widths as even as that allows; a word wider than
+     * [room] has a line to itself.
+     */
+    fun lines(text: String, room: Float, measure: (String) -> Float): List<String> {
+        val fewest = greedy(text, room, measure)
+        var narrow = max(measure(text) / max(fewest.size, 1), 1f)
+        while (narrow < room) {
+            val even = greedy(text, narrow, measure)
+            if (even.size <= fewest.size) return even
+            narrow *= 1.05f
+        }
+        return fewest
+    }
+
+    private fun greedy(text: String, room: Float, measure: (String) -> Float): List<String> {
+        val lines = mutableListOf<String>()
+        var line = ""
+        for (word in text.split(' ').filter { it.isNotEmpty() }) {
+            val next = if (line.isEmpty()) word else "$line $word"
+            if (line.isNotEmpty() && measure(next) > room) {
+                lines += line
+                line = word
+            } else {
+                line = next
+            }
+        }
+        if (line.isNotEmpty()) lines += line
+        return lines
     }
 }
