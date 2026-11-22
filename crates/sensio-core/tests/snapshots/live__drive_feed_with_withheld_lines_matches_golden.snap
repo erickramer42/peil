@@ -107,7 +107,7 @@ expression: "live(FEED, true)[1..]"
       {
         "device": "ble:aa:aa:aa:00:00:01",
         "rule": "persistence.places",
-        "rule_set_version": 2,
+        "rule_set_version": 3,
         "first_seen_ns": 1800000011000000000,
         "last_seen_ns": 1800000621000000000,
         "sightings": 2,
@@ -132,7 +132,7 @@ expression: "live(FEED, true)[1..]"
       {
         "device": "bt:dd:dd:dd:00:00:06",
         "rule": "persistence.places",
-        "rule_set_version": 2,
+        "rule_set_version": 3,
         "first_seen_ns": 1800000014000000000,
         "last_seen_ns": 1800000623000000000,
         "sightings": 2,
@@ -260,7 +260,7 @@ expression: "live(FEED, true)[1..]"
       {
         "device": "ble:aa:aa:aa:00:00:01",
         "rule": "persistence.places",
-        "rule_set_version": 2,
+        "rule_set_version": 3,
         "first_seen_ns": 1800000011000000000,
         "last_seen_ns": 1800001111000000000,
         "sightings": 3,
@@ -292,7 +292,7 @@ expression: "live(FEED, true)[1..]"
       {
         "device": "bt:dd:dd:dd:00:00:06",
         "rule": "persistence.places",
-        "rule_set_version": 2,
+        "rule_set_version": 3,
         "first_seen_ns": 1800000014000000000,
         "last_seen_ns": 1800001114000000000,
         "sightings": 3,
@@ -409,7 +409,7 @@ expression: "live(FEED, true)[1..]"
       {
         "device": "ble:aa:aa:aa:00:00:01",
         "rule": "persistence.places",
-        "rule_set_version": 2,
+        "rule_set_version": 3,
         "first_seen_ns": 1800000011000000000,
         "last_seen_ns": 1800001481000000000,
         "sightings": 4,
@@ -448,7 +448,7 @@ expression: "live(FEED, true)[1..]"
       {
         "device": "bt:dd:dd:dd:00:00:06",
         "rule": "persistence.places",
-        "rule_set_version": 2,
+        "rule_set_version": 3,
         "first_seen_ns": 1800000014000000000,
         "last_seen_ns": 1800001114000000000,
         "sightings": 3,

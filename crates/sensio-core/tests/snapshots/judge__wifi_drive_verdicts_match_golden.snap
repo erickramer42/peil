@@ -6,7 +6,7 @@ expression: verdicts
   {
     "device": "wifi:ee:ee:ee:00:00:01",
     "rule": "persistence.places",
-    "rule_set_version": 2,
+    "rule_set_version": 3,
     "first_seen_ns": 1800000011000000000,
     "last_seen_ns": 1800001601000000000,
     "sightings": 4,
@@ -45,7 +45,7 @@ expression: verdicts
   {
     "device": "wifi:ff:ff:ff:00:00:02",
     "rule": "persistence.places",
-    "rule_set_version": 2,
+    "rule_set_version": 3,
     "first_seen_ns": 1800000012000000000,
     "last_seen_ns": 1800000992000000000,
     "sightings": 3,

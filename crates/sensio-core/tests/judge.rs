@@ -133,6 +133,108 @@ fn a_stop_reached_again_is_one_place() {
     assert_eq!(judge(&events, &three), none);
 }
 
+/// One fix far off in the middle of a stop reads fast for one window, and
+/// again when it is the window's front ten seconds later; neither ends the
+/// stop, so each 200 s stop stays one place.
+#[test]
+fn one_wild_fix_in_a_stop_does_not_split_it() {
+    let s = 1_000_000_000_i64;
+    let t0 = 1_800_000_000 * s;
+    let fix = |t: i64, lat: f64| {
+        format!(
+            r#"{{"t_ns":{},"source":"gpsd","kind":"gnss_fix","lat_deg":{lat},"lon_deg":10.0}}"#,
+            t0 + t * s
+        )
+    };
+    let tag = |t: i64| {
+        format!(
+            r#"{{"t_ns":{},"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01"}}"#,
+            t0 + t * s
+        )
+    };
+    let mut lines = Vec::new();
+    for (at, lat) in [(0, 60.0), (700, 60.05)] {
+        for t in at..=at + 200 {
+            // About 1.1 km off for one fix, as a GNSS jump can be.
+            lines.push(fix(t, if t == at + 100 { lat + 0.01 } else { lat }));
+        }
+        lines.push(tag(at + 150));
+    }
+    let events = parse_jsonl(Cursor::new(lines.join("\n"))).expect("parses");
+    let verdicts = judge(&events, &PersistenceRule::default());
+    assert_eq!(verdicts.len(), 1, "{verdicts:?}");
+    let lats: Vec<f64> = verdicts[0].places.iter().map(|p| p.lat_deg).collect();
+    assert_eq!(lats, [60.0, 60.05]);
+}
+
+/// A stop that resumes within one window but at another place, as after a
+/// gap in the fixes, is a new stop: it doesn't take the last one's place.
+#[test]
+fn a_stop_resumed_at_once_somewhere_else_is_a_new_place() {
+    let s = 1_000_000_000_i64;
+    let t0 = 1_800_000_000 * s;
+    let fix = |t: i64, lat: f64| {
+        format!(
+            r#"{{"t_ns":{},"source":"gpsd","kind":"gnss_fix","lat_deg":{lat},"lon_deg":10.0}}"#,
+            t0 + t * s
+        )
+    };
+    let tag = |t: i64| {
+        format!(
+            r#"{{"t_ns":{},"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01"}}"#,
+            t0 + t * s
+        )
+    };
+    let mut lines: Vec<String> = (0..=130).step_by(10).map(|t| fix(t, 60.0)).collect();
+    lines.push(tag(11));
+    lines.extend((131..=800).step_by(10).map(|t| fix(t, 60.05)));
+    lines.push(tag(750));
+    let events = parse_jsonl(Cursor::new(lines.join("\n"))).expect("parses");
+    let verdicts = judge(&events, &PersistenceRule::default());
+    let lats: Vec<Vec<f64>> = verdicts
+        .iter()
+        .map(|v| v.places.iter().map(|p| p.lat_deg).collect())
+        .collect();
+    assert_eq!(lats, [[60.0, 60.05]]);
+}
+
+/// A drive away and back to the same spot is two stops there: the first
+/// keeps its own end.
+#[test]
+fn a_stop_after_a_drive_back_to_the_same_spot_is_its_own_stop() {
+    let s = 1_000_000_000_i64;
+    let t0 = 1_800_000_000 * s;
+    let fix = |t: i64, lat: f64| {
+        format!(
+            r#"{{"t_ns":{},"source":"gpsd","kind":"gnss_fix","lat_deg":{lat},"lon_deg":10.0}}"#,
+            t0 + t * s
+        )
+    };
+    let tag = |t: i64| {
+        format!(
+            r#"{{"t_ns":{},"source":"kismet","kind":"ble_advert","addr":"aa:aa:aa:00:00:01"}}"#,
+            t0 + t * s
+        )
+    };
+    let mut lines = vec![fix(0, 60.0), fix(10, 60.0), tag(11), fix(130, 60.0)];
+    lines.extend([
+        fix(300, 60.02),
+        fix(600, 60.0),
+        fix(610, 60.0),
+        fix(730, 60.0),
+    ]);
+    lines.extend([
+        fix(1300, 60.05),
+        fix(1310, 60.05),
+        tag(1311),
+        fix(1430, 60.05),
+    ]);
+    let events = parse_jsonl(Cursor::new(lines.join("\n"))).expect("parses");
+    let verdicts = judge(&events, &PersistenceRule::default());
+    assert_eq!(verdicts.len(), 1, "{verdicts:?}");
+    assert_eq!(verdicts[0].places[0].stopped_to_ns, t0 + 130 * s);
+}
+
 #[test]
 fn wifi_drive_verdicts_match_golden() {
     let verdicts = judge(&wifi_drive(), &PersistenceRule::default());

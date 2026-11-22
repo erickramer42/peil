@@ -16,7 +16,7 @@ use crate::movement::{Fix, Window};
 /// The rule set's version. Bump it whenever a rule's logic or a default
 /// changes, so recorded verdicts can be compared against the rules that made
 /// them.
-pub const RULE_SET_VERSION: u32 = 2;
+pub const RULE_SET_VERSION: u32 = 3;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -24,8 +24,11 @@ const NS_PER_S: i64 = 1_000_000_000;
 /// places over a span of time: one that stays with the vehicle across stops.
 ///
 /// A stop is a stretch where the vehicle moves slower than `moving_mps` over
-/// the movement window, and it is a place once it has lasted `min_stop_ns`,
-/// so a traffic light rarely counts and passing along a road never does. A
+/// the movement window. A stop that reads slow again within one window of
+/// its end, from within `place_separation_m` of where it began, goes on, so
+/// one wild fix doesn't split it. It is a place once it has lasted
+/// `min_stop_ns`, so a traffic light rarely counts and passing along a road
+/// never does. A
 /// sighting counts toward a stop while the judge reads the vehicle stopped
 /// there, with a fix no older than `max_fix_age_ns`.
 #[derive(Debug, Clone, PartialEq)]
@@ -164,6 +167,15 @@ impl Vehicle {
         {
             Some((false, (from_ns, lat_deg, lon_deg))) => match self.stops.last_mut() {
                 Some(stop) if self.stopped => stop.to_ns = fix.0,
+                // A fast window inside the stop: one wild fix, not a drive.
+                Some(stop)
+                    if from_ns <= stop.to_ns.saturating_add(rule.moving_window_ns)
+                        && geo::distance_m(stop.lat_deg, stop.lon_deg, lat_deg, lon_deg)
+                            < rule.place_separation_m =>
+                {
+                    stop.to_ns = fix.0;
+                    self.stopped = true;
+                }
                 _ => {
                     self.stops.push(Stop {
                         from_ns,
