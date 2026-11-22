@@ -516,9 +516,8 @@ impl<N: Normalize> Live<N> {
         self.saw(boot_ns);
         self.advance_rates(boot_ns);
         self.judged += 1;
-        // The answer's time: its arrival through the clock, held to
-        // the lateness window's edge, or, without a clock, the latest
-        // event's.
+        // The answer's time: its arrival through the clock held to the
+        // window's edge, or without a clock the latest event's.
         let at_ns = self
             .utc(boot_ns, None, None)
             .map(|t| self.edge().map_or(t, |edge| t.max(edge)))

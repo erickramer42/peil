@@ -241,7 +241,8 @@ pub struct Description {
     /// The company IDs in its adverts' manufacturer data, ordered.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub company_ids: Vec<u16>,
-    /// The tracker network its latest advert's format names.
+    /// The tracker network named by the latest advert whose format names one;
+    /// an advert in no tracker format leaves it as it was.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tracker: Option<Tracker>,
     /// An access point's latest announced security.
