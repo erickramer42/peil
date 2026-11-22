@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
@@ -23,13 +24,17 @@ import android.widget.TextView
  * list. A tap on a dot selects that emitter: its card comes first, and the
  * list puts the emitters closest to it in signal strength first. A tap away
  * from the dots clears the selection, or with none, switches the ring between
- * large and small. The settings sit behind one button. Colors come from the
+ * large and small. While finding, a tap on the ring swaps it for the camera
+ * view (FindCamera) and a tap there swaps back. The settings sit behind one button. Colors come from the
  * user's theme (Theme.kt), read before the first frame. The screen stays on
  * while a session runs (roadmap item 69): the driver keeps the full picture,
  * and BLE keeps its match-everything scan.
  */
 class MainActivity : Activity() {
     private lateinit var ring: RingView
+    private lateinit var camera: FindCamera
+    /** Whether the camera view stands in the ring's place, which only find mode allows. */
+    private var cameraOn = false
     private lateinit var body: LinearLayout
     private lateinit var scroll: ScrollView
     /** The emitter the body is laid out for, so it's rearranged only when that changes. */
@@ -59,6 +64,11 @@ class MainActivity : Activity() {
         val pad = (12 * resources.displayMetrics.density).toInt()
 
         ring = RingView(this, palette).apply { onTap = ::tapped }
+        camera = FindCamera(this, palette).apply {
+            visibility = View.GONE
+            setOnClickListener { camera(false) }
+            contentDescription = "Find mode's camera view: the band is where the sweep heard the target strongest"
+        }
         card = Ui.text(this, 13f).apply { typeface = Ui.mono(this@MainActivity) }
         status = Ui.text(this, 14f)
         list = Ui.text(this, 12f).apply { typeface = Ui.mono(this@MainActivity) }
@@ -85,6 +95,7 @@ class MainActivity : Activity() {
             setBackgroundColor(palette.bg)
             setPadding(pad, pad, pad, pad)
             addView(ring)
+            addView(camera)
             addView(side, if (landscape) LinearLayout.LayoutParams(0, -1, 1f) else LinearLayout.LayoutParams(-1, 0, 1f))
         }
         placeRing()
@@ -105,6 +116,7 @@ class MainActivity : Activity() {
 
     override fun onStop() {
         Live.unlisten(refresh)
+        camera(false)
         super.onStop()
     }
 
@@ -130,6 +142,9 @@ class MainActivity : Activity() {
         ring.find = target?.let { device ->
             RingView.FindState(Live.findAnswer, Live.headingDeg, all?.emitters?.firstOrNull { it.device == device })
         }
+        if (target == null && cameraOn) camera(false)
+        camera.answer = Live.findAnswer
+        camera.target = target?.let { device -> all?.emitters?.firstOrNull { it.device == device } }
         val trackers = picture?.emitters.orEmpty().count { it.tracker != null }
         ring.contentDescription = if (picture == null) "Emitter ring, empty: no session yet" else
             "Emitter ring: ${picture.emitters.size} emitters by signal strength and kind, $trackers tracker" +
@@ -156,7 +171,8 @@ class MainActivity : Activity() {
                 if (coverage.sleptS > 0) append(", asleep ${coverage.sleptS} s")
             }
             append(
-                if (target != null) "\nWedge: where the sweep heard it strongest, from the phone's top. Rings: signal strength, not distance."
+                if (cameraOn) "\nBand: where the sweep heard it strongest, over the camera. Tap it for the ring."
+                else if (target != null) "\nWedge: where the sweep heard it strongest, from the phone's top. Rings: signal strength, not distance. Tap the ring for the camera view."
                 else "\nRings: signal strength, not distance. Angle: kind, not direction.",
             )
         }
@@ -182,6 +198,7 @@ class MainActivity : Activity() {
     /** A tap on the ring: a dot selects it; elsewhere clears the selection, or with none, resizes the ring. */
     private fun tapped(device: String?) {
         when {
+            Live.findTarget != null -> camera(true)
             device != null -> selected = if (device == selected) null else device
             selected != null -> selected = null
             else -> {
@@ -192,16 +209,32 @@ class MainActivity : Activity() {
         show()
     }
 
-    /** The ring's size: large fills the width (half the screen across); small leaves the list more room. */
+    /** The ring's size, and the camera view's in its place: large fills the width (half the screen across); small leaves the list more room. */
     private fun placeRing() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val large = Options.ringLarge(this)
-        ring.layoutParams = if (landscape) {
-            LinearLayout.LayoutParams(0, -1, if (large) 1f else 0.6f)
-        } else {
-            val side = if (large) -2 else (resources.displayMetrics.widthPixels * 0.55f).toInt()
-            LinearLayout.LayoutParams(-1, side).apply { gravity = Gravity.CENTER_HORIZONTAL }
+        for (view in listOf(ring, camera)) {
+            view.layoutParams = if (landscape) {
+                LinearLayout.LayoutParams(0, -1, if (large) 1f else 0.6f)
+            } else {
+                val side = if (large) -2 else (resources.displayMetrics.widthPixels * 0.55f).toInt()
+                LinearLayout.LayoutParams(-1, side).apply { gravity = Gravity.CENTER_HORIZONTAL }
+            }
         }
+    }
+
+    /** Shows the camera view in the ring's place, asking for the camera the first time, or the ring again. */
+    private fun camera(on: Boolean) {
+        if (on && checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.CAMERA), CAMERA_REQUEST)
+            return
+        }
+        if (on == cameraOn) return
+        cameraOn = on
+        camera.visibility = if (on) View.VISIBLE else View.GONE
+        ring.visibility = if (on) View.GONE else View.VISIBLE
+        if (on) camera.start() else camera.stop()
+        show()
     }
 
     /** The settings that change less often than Start and Mine, each labeled with its current value. */
@@ -297,6 +330,14 @@ class MainActivity : Activity() {
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode == CAMERA_REQUEST) {
+            if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                if (Live.findTarget != null) camera(true)
+            } else {
+                refused(listOf(Manifest.permission.CAMERA), "The camera view")
+            }
+            return
+        }
         if (requestCode == CLASSIC_REQUEST) {
             val granted = checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
             Options.setClassic(this, granted)
@@ -396,6 +437,7 @@ class MainActivity : Activity() {
     companion object {
         const val LIST_LENGTH = 40
         private const val CLASSIC_REQUEST = 2
+        private const val CAMERA_REQUEST = 3
 
         val PERMISSIONS = listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,

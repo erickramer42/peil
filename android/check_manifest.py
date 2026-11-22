@@ -22,6 +22,7 @@ PERMISSIONS = {
     "android.permission.WAKE_LOCK",
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.INTERNET",
+    "android.permission.CAMERA",
 }
 
 NAMESPACE = "io.github.erickramer42.sensio"

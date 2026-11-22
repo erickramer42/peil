@@ -9,6 +9,7 @@ object Permissions {
         "android.permission.BLUETOOTH_CONNECT" to "Nearby devices",
         "android.permission.NEARBY_WIFI_DEVICES" to "Nearby devices",
         "android.permission.POST_NOTIFICATIONS" to "Notifications",
+        "android.permission.CAMERA" to "Camera",
     )
 
     /** Each group once, in the order first named; an unknown permission by its own name. */
