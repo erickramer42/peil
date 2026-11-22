@@ -475,6 +475,45 @@ fn summary_as_html_draws_the_route_and_fetches_nothing() {
     }
 }
 
+/// An SSID is a stranger's text: the page escapes it, so it never becomes markup.
+#[test]
+fn summary_as_html_escapes_a_flagged_access_points_name() {
+    let feed = std::fs::read_to_string(feed_fixture()).expect("the fixture reads");
+    // The fixture spells the address in both cases, as a radio may.
+    let hostile = ["aa:aa:aa:00:00:01", "AA:AA:AA:00:00:01"]
+        .into_iter()
+        .fold(feed.clone(), |text, addr| {
+            text.replace(
+                &format!(r#"{{\"kind\":\"ble_advert\",\"addr\":\"{addr}\""#),
+                r#"{\"kind\":\"wifi_ap\",\"bssid\":\"ee:ee:ee:00:00:01\",\"ssid\":\"synthetic<img src=x onerror=1>\""#,
+            )
+        });
+    assert_ne!(feed, hostile, "the fixture holds the flagged BLE device");
+    let path = std::env::temp_dir().join(format!("peil-hostile-{}.feed", std::process::id()));
+    std::fs::write(&path, hostile).expect("the feed writes");
+    let output = peil(
+        &[
+            "summary".as_ref(),
+            "--format".as_ref(),
+            "html".as_ref(),
+            path.as_os_str(),
+        ],
+        None,
+    );
+    let _ = std::fs::remove_file(&path);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let html = String::from_utf8(output.stdout).expect("UTF-8");
+    assert!(
+        html.contains("synthetic&lt;img src=x onerror=1&gt;"),
+        "the name is shown, escaped"
+    );
+    assert!(!html.contains("<img"), "the name became markup");
+}
+
 #[test]
 fn summary_of_a_file_that_isnt_a_feed_exits_2() {
     let output = peil(&["summary".as_ref(), drive_fixture().as_os_str()], None);
