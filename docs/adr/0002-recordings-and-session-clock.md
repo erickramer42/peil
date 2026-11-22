@@ -1,6 +1,6 @@
 # ADR-0002: Raw recordings, normalized events, and one session clock
 
-Status: Accepted. Built: the normalized event schema and the judge's ordering. Not yet built: recordings, replay, clock checks, identifier hashing, redaction.
+Status: Accepted. Built: the normalized event schema and the judge's ordering; on the phone, the saved feed as the recording (ADR-0005: each source's raw lines with their arrival times, the boot clock's mapping to GNSS or system time, time asleep), a laptop's times mapped onto it by the link's offset, retention the user sets, and replay through `peil live`. Not yet built: the laptop's own recording (Kismet's pcapng and event JSON, gpsd, the manifest), the PPS-disciplined clock and its sync state, identifier hashing and home-zone redaction on export.
 
 ## Context
 
