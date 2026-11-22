@@ -21,7 +21,7 @@ use crate::movement::{Fix, Window};
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats, and the FAA registry snapshot, which nothing else can
 /// supply); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 10;
+pub const DESCRIBE_VERSION: u32 = 11;
 
 const NS_PER_S: i64 = 1_000_000_000;
 

@@ -125,11 +125,13 @@ fn location(m: &[u8]) -> Option<Message> {
     let status = Some(flags >> 4).filter(|s| *s <= 4);
     let direction = u16::from(*m.get(2)?) + if flags & 0x02 != 0 { 180 } else { 0 };
     let speed = *m.get(3)?;
-    let speed_mps = (speed != 255).then(|| {
-        if flags & 0x01 == 0 {
-            f64::from(speed) * 0.25
-        } else {
+    let multiplied = flags & 0x01 != 0;
+    // Unknown is 255 m/s, the byte 255 with the multiplier; without it, 63.75 m/s.
+    let speed_mps = (!(multiplied && speed == 255)).then(|| {
+        if multiplied {
             f64::from(speed).mul_add(0.75, 63.75)
+        } else {
+            f64::from(speed) * 0.25
         }
     });
     let vertical = i8::from_le_bytes([*m.get(4)?]);
@@ -146,15 +148,17 @@ fn location(m: &[u8]) -> Option<Message> {
     })
 }
 
-/// A latitude and longitude, each int32 x 1e-7 degrees; none when both are 0
-/// (the encoding's "invalid") or either is out of range.
+/// A latitude and longitude, each an int32 count of 1e-7 degrees, as the
+/// double nearest that decimal; none when both are 0 (the encoding's
+/// "invalid") or either is out of range.
 fn position(lat: &[u8], lon: &[u8]) -> Option<(f64, f64)> {
     let int = |b: &[u8]| Some(i32::from_le_bytes(b.try_into().ok()?));
     let (lat, lon) = (int(lat)?, int(lon)?);
     if lat == 0 && lon == 0 {
         return None;
     }
-    let (lat, lon) = (f64::from(lat) * 1e-7, f64::from(lon) * 1e-7);
+    // Divided: 1e-7 isn't a double, so a product is off in its last bit.
+    let (lat, lon) = (f64::from(lat) / 1e7, f64::from(lon) / 1e7);
     ((-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon)).then_some((lat, lon))
 }
 

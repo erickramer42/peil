@@ -185,6 +185,29 @@ fn encoded_unknowns_read_as_absent() {
     );
 }
 
+/// The encoding's unknown speed is 255 m/s, the byte 255 with the multiplier
+/// (`decodeSpeedHorizontal`); without it the byte is the top of the fine scale.
+#[test]
+fn the_byte_255_without_the_multiplier_is_63_75_mps() {
+    let fast = message(1, |m| m[3] = 255);
+    let picture = picture_of(&[advert(T0, &wrapped(1, &fast))], T0);
+    let d = picture.emitters[0].drone.as_ref().expect("a drone");
+    assert_eq!(d.speed_mps, Some(63.75));
+}
+
+/// A coordinate is an integer count of 1e-7 degrees: the picture gives the
+/// double nearest that decimal, so it prints with seven decimals at most.
+#[test]
+fn a_position_is_the_double_nearest_its_decimal() {
+    let at = message(1, |m| {
+        degrees(m, 5, 60.99);
+        degrees(m, 9, 9.97);
+    });
+    let picture = picture_of(&[advert(T0, &wrapped(1, &at))], T0);
+    let d = picture.emitters[0].drone.as_ref().expect("a drone");
+    assert_eq!((d.lat_deg, d.lon_deg), (Some(60.99), Some(9.97)));
+}
+
 #[test]
 fn service_data_that_isnt_remote_id_makes_no_drone() {
     let lines = [
