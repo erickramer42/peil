@@ -240,7 +240,7 @@ fn pair(
         let azimuth = headings
             .iter()
             .find(|h| h.0 == receiver)
-            .filter(|h| event.t_ns - h.1 <= params.max_heading_age_ns)
+            .filter(|h| event.t_ns.saturating_sub(h.1) <= params.max_heading_age_ns)
             .and_then(|h| h.2);
         let Some(az) = azimuth else {
             sweep.unpaired += 1;

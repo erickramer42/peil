@@ -55,6 +55,18 @@ fn sweep(steps: u32, bearing: f64) -> Vec<String> {
     lines
 }
 
+/// Hostile input: `parse_jsonl` doesn't bound `t_ns`, so a heading and a
+/// reading at the ends of its range must age by saturation, not overflow.
+#[test]
+fn a_heading_at_the_far_end_of_time_is_too_old_without_overflow() {
+    let lines = [
+        heading(i64::MIN, "phone", 90.0, 0.0),
+        ble(i64::MAX, "phone", "aa:aa:aa:00:00:01", -60.0),
+    ];
+    let answer = find(&events(&lines), target(), i64::MIN, &FindParams::default());
+    assert_eq!((answer.paired, answer.unpaired), (0, 1));
+}
+
 #[test]
 fn a_full_turn_points_at_the_strongest_sector() {
     let answer = find(
