@@ -21,7 +21,7 @@ use crate::movement::{Fix, Window};
 /// The version of the describe layer's code and its tables in code (the
 /// advert formats, and the FAA registry snapshot, which nothing else can
 /// supply); it follows `RULE_SET_VERSION`'s rules.
-pub const DESCRIBE_VERSION: u32 = 11;
+pub const DESCRIBE_VERSION: u32 = 12;
 
 const NS_PER_S: i64 = 1_000_000_000;
 
@@ -45,6 +45,22 @@ pub struct DescribeParams {
     pub parked_after_ns: TimeNs,
     /// How many of the newest emitters the texture names.
     pub newest: usize,
+    /// The strength check on a drone's claimed position ([`StrengthCheck`]):
+    /// the most a BLE transmitter sends, dBm.
+    pub claim_max_tx_dbm: f64,
+    /// Added to the limit for a receiver's reporting error and for multipath
+    /// gain, dB.
+    pub claim_margin_db: f64,
+    /// Taken off the claimed distance for position error on both sides,
+    /// meters.
+    pub claim_allowance_m: f64,
+    /// How far back from a drone's latest compared reading its readings
+    /// count.
+    pub claim_window_ns: TimeNs,
+    /// The fewest readings in that window that make a check.
+    pub claim_min_readings: usize,
+    /// The oldest fix a reading is compared from.
+    pub claim_fix_age_ns: TimeNs,
 }
 
 impl Default for DescribeParams {
@@ -57,6 +73,12 @@ impl Default for DescribeParams {
             moving_window_ns: 10 * NS_PER_S,
             parked_after_ns: 300 * NS_PER_S,
             newest: 5,
+            claim_max_tx_dbm: 20.0,
+            claim_margin_db: 10.0,
+            claim_allowance_m: 50.0,
+            claim_window_ns: 10 * NS_PER_S,
+            claim_min_readings: 3,
+            claim_fix_age_ns: 2 * NS_PER_S,
         }
     }
 }
@@ -82,6 +104,18 @@ impl DescribeParams {
         }
         if self.parked_after_ns < 0 {
             return Err("parked_after_ns must not be negative");
+        }
+        if !self.claim_max_tx_dbm.is_finite() || !self.claim_margin_db.is_finite() {
+            return Err("claim_max_tx_dbm and claim_margin_db must be finite");
+        }
+        if !self.claim_allowance_m.is_finite() || self.claim_allowance_m < 0.0 {
+            return Err("claim_allowance_m must be a finite distance, 0 or above");
+        }
+        if self.claim_window_ns <= 0 || self.claim_fix_age_ns < 0 {
+            return Err("claim_window_ns must be above 0 and claim_fix_age_ns not negative");
+        }
+        if self.claim_min_readings == 0 {
+            return Err("claim_min_readings must be above 0");
         }
         Ok(())
     }
@@ -435,12 +469,104 @@ pub struct DroneState {
     /// The operator's registration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operator_id: Option<String>,
+    /// Its adverts' strength against the distance it claimed, once enough of
+    /// them were compared.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strength_check: Option<StrengthCheck>,
+}
+
+/// A drone's strength against its claimed distance (ADR-0007 section 6 as
+/// amended). Free space is the least loss a signal can have, so a reading
+/// above what free space allows at the claimed distance means the
+/// transmitter is nearer than the position it sends, or that position or
+/// the vehicle's fix is wrong. A weak reading says nothing: walls and a car
+/// body only weaken a signal.
+///
+/// A reading is one advert that carried the drone's position, heard by the
+/// phone's own scan with a strength, while the vehicle's fix was at most
+/// `claim_fix_age_ns` old. Its limit is `claim_max_tx_dbm` + `claim_margin_db`
+/// less the free-space loss at 2402 MHz over the claimed distance less
+/// `claim_allowance_m` (1 m at least), to 0.1 dB. The check is over the
+/// readings within `claim_window_ns` of the latest, at least
+/// `claim_min_readings` of them, and gives the median one by how far it is
+/// over its limit (the lower of two middles).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct StrengthCheck {
+    /// The readings compared.
+    pub readings: usize,
+    /// When the latest of them was heard.
+    pub latest_ns: TimeNs,
+    /// The median reading's strength, dBm.
+    pub dbm: f32,
+    /// How far from the vehicle the drone said it was at that reading, meters.
+    pub claimed_distance_m: f64,
+    /// That reading's limit, dBm.
+    pub limit_dbm: f64,
+    /// Whether the median reading is above its limit.
+    pub too_strong: bool,
+}
+
+/// One reading for the strength check: when, how strong, and how far from
+/// the vehicle's fix the drone said it was.
+#[derive(Debug, Clone, Copy)]
+struct Claim {
+    t_ns: TimeNs,
+    dbm: f32,
+    distance_m: f64,
+}
+
+/// The source whose readings the strength check compares: the phone's own
+/// scan, taken where the fix is, through an antenna with no gain to allow for.
+const PHONE_SOURCE: &str = "android";
+
+/// The most readings kept for one drone, the newest; a flood of adverts
+/// can't grow its state.
+const MAX_CLAIMS: usize = 64;
+
+/// Free-space loss over 1 m at 2402 MHz, BLE's lowest advertising channel,
+/// where it is least: 20 log10(4 pi f / c), dB.
+const BLE_LOSS_AT_1M_DB: f64 = 40.06;
+
+/// The strongest reading the check allows at a claimed distance, dBm to 0.1.
+fn limit_dbm(distance_m: f64, params: &DescribeParams) -> f64 {
+    let d = (distance_m - params.claim_allowance_m).max(1.0);
+    let limit =
+        params.claim_max_tx_dbm + params.claim_margin_db - BLE_LOSS_AT_1M_DB - 20.0 * d.log10();
+    (limit * 10.0).round() / 10.0
+}
+
+/// The check over a drone's readings, which `Track::claim` keeps to the
+/// window of the latest, in the order they were heard; none with too few.
+fn strength_check(claims: &[Claim], params: &DescribeParams) -> Option<StrengthCheck> {
+    let latest_ns = claims.last()?.t_ns;
+    if claims.len() < params.claim_min_readings {
+        return None;
+    }
+    let mut compared: Vec<(f64, f64, &Claim)> = claims
+        .iter()
+        .map(|c| {
+            let limit = limit_dbm(c.distance_m, params);
+            (f64::from(c.dbm) - limit, limit, c)
+        })
+        .collect();
+    compared.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let &(over, limit_dbm, claim) = compared.get(compared.len().saturating_sub(1) / 2)?;
+    Some(StrengthCheck {
+        readings: compared.len(),
+        latest_ns,
+        dbm: claim.dbm,
+        claimed_distance_m: claim.distance_m,
+        limit_dbm,
+        too_strong: over > 0.0,
+    })
 }
 
 impl DroneState {
-    /// Takes one advert's Remote ID messages, in the judge's order.
-    fn observe(&mut self, t_ns: TimeNs, messages: Vec<crate::remote_id::Message>) {
+    /// Takes one advert's Remote ID messages, in the judge's order; true when
+    /// they gave the drone's position.
+    fn observe(&mut self, t_ns: TimeNs, messages: Vec<crate::remote_id::Message>) -> bool {
         use crate::remote_id::Message;
+        let mut placed = false;
         for message in messages {
             match message {
                 Message::BasicId {
@@ -471,6 +597,7 @@ impl DroneState {
                     if let Some((lat, lon)) = position {
                         (self.lat_deg, self.lon_deg) = (Some(lat), Some(lon));
                         self.position_ns = Some(t_ns);
+                        placed = true;
                     }
                 }
                 Message::System {
@@ -489,6 +616,7 @@ impl DroneState {
                 }
             }
         }
+        placed
     }
 
     /// This state with distances and bearings from `fix`.
@@ -1162,6 +1290,8 @@ struct Track {
     device_class: Option<u32>,
     aircraft: Option<AircraftState>,
     drone: Option<DroneState>,
+    /// A drone's recent readings for its strength check, oldest first.
+    claims: Vec<Claim>,
 }
 
 impl Track {
@@ -1181,11 +1311,20 @@ impl Track {
             device_class: None,
             aircraft: None,
             drone: None,
+            claims: Vec::new(),
         }
     }
 
-    /// Adds the next sighting in the judge's order.
-    fn observe(&mut self, event: &Event, kind: EmitterKind, dbm: Option<f32>) {
+    /// Adds the next sighting in the judge's order; `fix` is the vehicle's
+    /// latest before it.
+    fn observe(
+        &mut self,
+        event: &Event,
+        kind: EmitterKind,
+        dbm: Option<f32>,
+        fix: Option<Fix>,
+        params: &DescribeParams,
+    ) {
         // One address is one radio in either Wi-Fi role; an access point is
         // the role worth naming.
         if kind == EmitterKind::AccessPoint {
@@ -1222,9 +1361,13 @@ impl Track {
                     self.tracker = Some(found);
                 }
                 if let Some(messages) = remote_id(service_data) {
-                    self.drone
+                    let placed = self
+                        .drone
                         .get_or_insert_with(DroneState::default)
                         .observe(event.t_ns, messages);
+                    if placed {
+                        self.claim(event, dbm, fix, params);
+                    }
                 }
             }
             EventKind::BtClassic {
@@ -1237,6 +1380,38 @@ impl Track {
                 .observe(event.t_ns, &event.kind),
             _ => {}
         }
+    }
+
+    /// Keeps this advert as a reading for the strength check
+    /// ([`StrengthCheck`] says which adverts count).
+    fn claim(
+        &mut self,
+        event: &Event,
+        dbm: Option<f32>,
+        fix: Option<Fix>,
+        params: &DescribeParams,
+    ) {
+        let (Some(dbm), Some((fix_ns, lat, lon)), Some(drone)) = (dbm, fix, &self.drone) else {
+            return;
+        };
+        let (Some(to_lat), Some(to_lon)) = (drone.lat_deg, drone.lon_deg) else {
+            return;
+        };
+        let age = event.t_ns.saturating_sub(fix_ns);
+        if event.source != PHONE_SOURCE || !(0..=params.claim_fix_age_ns).contains(&age) {
+            return;
+        }
+        let distance_m = crate::geo::distance_m(lat, lon, to_lat, to_lon);
+        self.claims
+            .retain(|c| event.t_ns.saturating_sub(c.t_ns) <= params.claim_window_ns);
+        if self.claims.len() >= MAX_CLAIMS {
+            self.claims.remove(0);
+        }
+        self.claims.push(Claim {
+            t_ns: event.t_ns,
+            dbm,
+            distance_m,
+        });
     }
 }
 
@@ -1346,7 +1521,7 @@ impl DescribeFold {
                     entry.insert(base.unwrap_or_else(|| Track::new(kind, event.t_ns, addr)))
                 }
             };
-            track.observe(event, kind, dbm);
+            track.observe(event, kind, dbm, movement.latest, params);
         }
 
         let recent_from = now_ns.saturating_sub(params.recent_ns);
@@ -1422,7 +1597,7 @@ fn observe(
     tracks
         .entry(device)
         .or_insert_with(|| Track::new(kind, event.t_ns, addr))
-        .observe(event, kind, dbm);
+        .observe(event, kind, dbm, movement.latest, params);
 }
 
 /// The emitter picture at `now_ns`, over `events`.
@@ -1516,7 +1691,10 @@ fn description(
         },
         own: None,
         aircraft: track.aircraft.as_ref().map(|a| a.seen_from(fix)),
-        drone: track.drone.as_ref().map(|d| d.seen_from(fix)),
+        drone: track.drone.as_ref().map(|d| DroneState {
+            strength_check: strength_check(&track.claims, params),
+            ..d.seen_from(fix)
+        }),
     }
 }
 

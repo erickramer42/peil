@@ -208,6 +208,118 @@ fn a_position_is_the_double_nearest_its_decimal() {
     assert_eq!((d.lat_deg, d.lon_deg), (Some(60.99), Some(9.97)));
 }
 
+const S: i64 = 1_000_000_000;
+
+fn fix_at(t: i64) -> String {
+    format!(r#"{{"t_ns":{t},"source":"android","kind":"gnss_fix","lat_deg":60.0,"lon_deg":10.0}}"#)
+}
+
+/// An advert at `rssi` dBm whose Location message claims `lat_deg`, 10.0.
+fn claim(t: i64, lat_deg: f64, rssi: i16) -> String {
+    let location = message(1, |m| {
+        degrees(m, 5, lat_deg);
+        degrees(m, 9, 10.0);
+    });
+    advert(t, &wrapped(1, &location)).replace(r#""rssi_dbm":-70"#, &format!(r#""rssi_dbm":{rssi}"#))
+}
+
+/// The vehicle at 60.0, 10.0 with a fix a second, and one claim of `lat_deg`
+/// with each fix at each of `rssi`.
+fn claims(lat_deg: f64, rssi: &[i16]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (t, r) in (T0..).step_by(1_000_000_000).zip(rssi) {
+        lines.push(fix_at(t));
+        lines.push(claim(t, lat_deg, *r));
+    }
+    lines
+}
+
+fn check_of(lines: &[String]) -> Option<sensio_core::describe::StrengthCheck> {
+    let picture = picture_of(lines, T0 + 60 * S);
+    let drone = picture.emitters[0].drone.as_ref().expect("a drone");
+    drone.strength_check.clone()
+}
+
+/// The strength check (ADR-0007 section 6 as amended): 60.03 is 3336 m from
+/// the vehicle, where free space allows -80.4 dBm at the defaults.
+#[test]
+fn a_drone_louder_than_free_space_allows_at_its_claimed_distance_is_too_strong() {
+    let check = check_of(&claims(60.03, &[-70, -70, -70])).expect("a check");
+    assert_eq!(
+        (check.readings, check.latest_ns, check.dbm, check.limit_dbm),
+        (3, T0 + 2 * S, -70.0, -80.4)
+    );
+    assert!(
+        (check.claimed_distance_m - 3335.85).abs() < 1.0,
+        "{check:?}"
+    );
+    assert!(check.too_strong);
+}
+
+#[test]
+fn a_drone_within_the_limit_is_checked_and_fits() {
+    let check = check_of(&claims(60.03, &[-90, -90, -90])).expect("a check");
+    assert_eq!((check.dbm, check.limit_dbm), (-90.0, -80.4));
+    assert!(!check.too_strong);
+}
+
+#[test]
+fn the_median_reading_decides_so_one_strong_reading_among_three_doesnt_flag() {
+    let one = check_of(&claims(60.03, &[-90, -40, -90])).expect("a check");
+    assert_eq!((one.dbm, one.too_strong), (-90.0, false));
+    let two = check_of(&claims(60.03, &[-70, -90, -70])).expect("a check");
+    assert_eq!((two.dbm, two.too_strong), (-70.0, true));
+}
+
+/// Within the allowance of the vehicle the limit is the one at 1 m, which no
+/// reading from the phone's scan passes.
+#[test]
+fn a_drone_claiming_to_be_beside_the_vehicle_is_never_too_strong() {
+    let check = check_of(&claims(60.0, &[-30, -30, -30])).expect("a check");
+    assert_eq!((check.limit_dbm, check.too_strong), (-10.1, false));
+}
+
+#[test]
+fn too_few_readings_within_the_window_make_no_check() {
+    assert_eq!(check_of(&claims(60.03, &[-70, -70])), None);
+    let spread: Vec<String> = [0, 11, 12]
+        .into_iter()
+        .flat_map(|s| [fix_at(T0 + s * S), claim(T0 + s * S, 60.03, -70)])
+        .collect();
+    assert_eq!(check_of(&spread), None, "the first is 12 s before the last");
+}
+
+#[test]
+fn an_advert_without_a_position_isnt_a_reading() {
+    let mut lines = claims(60.03, &[-70]);
+    for s in 1..3 {
+        lines.push(fix_at(T0 + s * S));
+        lines.push(advert(T0 + s * S, &wrapped(1, &basic_id())));
+    }
+    assert_eq!(check_of(&lines), None);
+}
+
+#[test]
+fn a_reading_isnt_compared_from_a_fix_older_than_its_age_limit() {
+    let mut lines = vec![fix_at(T0)];
+    lines.extend((3..6).map(|s| claim(T0 + s * S, 60.03, -70)));
+    assert_eq!(check_of(&lines), None);
+}
+
+#[test]
+fn only_the_phones_own_readings_are_compared() {
+    let lines: Vec<String> = claims(60.03, &[-70, -70, -70])
+        .into_iter()
+        .map(|l| {
+            l.replace(
+                r#""source":"android","receiver""#,
+                r#""source":"kismet","receiver""#,
+            )
+        })
+        .collect();
+    assert_eq!(check_of(&lines), None);
+}
+
 #[test]
 fn service_data_that_isnt_remote_id_makes_no_drone() {
     let lines = [
