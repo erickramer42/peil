@@ -1,6 +1,6 @@
 # Peil
 
-Nearby transmitters, loudest first. Peil lists the Wi-Fi, Bluetooth, aircraft and drones nearby. It reads what other programs already receive: an Android phone's own scans, and on a laptop, Kismet and readsb (ADS-B at 1090 MHz). GNSS gives them one clock and a position. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
+Nearby transmitters, loudest first. Peil lists the Wi-Fi and Bluetooth devices, aircraft and drones nearby. It reads what other programs already receive: an Android phone's own scans, and on a laptop, Kismet and readsb (ADS-B at 1090 MHz). GNSS gives them one clock and a position. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
 
 _*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
 
@@ -8,11 +8,11 @@ _*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
 
 - Lists what's transmitting: each emitter's kind, signal band (strength, never distance), vendor, tracker network and Wi-Fi security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).
   - The app, on Android 12 or later, draws them as a ring and a list; `peil describe` prints them.
-  - Aircraft from readsb and drones from their Remote ID adverts, with distance and bearing from the vehicle ([ADR-0007](docs/adr/0007-aircraft-and-drones.md)).
+  - Aircraft from readsb, with their FAA registration in the US, and drones from their BLE Remote ID adverts, with distance and bearing from the vehicle ([ADR-0007](docs/adr/0007-aircraft-and-drones.md)).
   - Mark your own devices to hide them; the [guide](docs/guide.md) has the rest.
-- Finds a BLE device, such as a tracker in your car: turn in place with the phone, and the ring shows the direction it's strongest.
+- Finds a BLE device, such as a tracker in your car: turn in place with the phone, and the ring, or the back camera's view, shows the direction it's strongest.
 - Adds a laptop: `peil link` sends Kismet's devices and readsb's aircraft to the app over USB tethering ([guide](docs/guide.md#the-laptop-link)).
-- Keeps each session's raw lines on the phone: `peil live` replays a saved feed, and `peil summary` tells what it came to.
+- Keeps each session's raw lines on the phone: `peil live` replays a saved feed, and the app or `peil summary` tells what it came to.
 - Flags a device heard during the vehicle's stops at two places, the one rule so far (`persistence.places`).
 - Installs from a release: `peil` for Linux on x86_64 and aarch64, and the signed APK ([CHANGELOG.md](CHANGELOG.md)).
 
@@ -94,7 +94,7 @@ A Wi-Fi station carries its address and the network it's on, never what it sent 
 
 ## Use and privacy
 
-Peil is for checking what's transmitting nearby for unusual RF activity. Receiving radio signals is legal in most places; decoding the contents of other people's communications often isn't, and Peil doesn't try. Where Peil transmits, such as an active BLE scan or a request to a vehicle's own ECUs, it does so only through certified hardware used within its certification. It never interferes with, disrupts or impersonates other devices: no jamming, no deauthentication, no spoofing. Its recordings hold other people's device identifiers and your own movements, so treat them as personal data: keep them local, and don't publish raw recordings.
+Peil is for checking what's transmitting nearby for unusual RF activity. Receiving radio signals is legal in most places; decoding the contents of other people's communications often isn't, and Peil doesn't try. Where Peil transmits, such as an active BLE scan or a request to a vehicle's own ECUs, it does so only through certified hardware used within its certification. It never interferes with, disrupts or impersonates other devices: no jamming, no deauthentication, no spoofing. Find mode's camera view shows the back camera's picture on the screen only; nothing it sees is saved or analyzed. Its recordings hold other people's device identifiers and your own movements, so treat them as personal data: keep them local, and don't publish raw recordings.
 
 ## Documentation
 
