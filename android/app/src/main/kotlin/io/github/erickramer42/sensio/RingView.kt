@@ -166,24 +166,22 @@ class RingView(context: Context, private val palette: Palette) : View(context) {
             val ty = cy + 0.9f * r * sin(a).toFloat()
             outlined(canvas, text, tx, ty, label)
         }
-        // Each circle's strength just inside its right edge, above the horizon,
-        // and the rim's "no dBm" below it when the rim is drawn. Each label ends
-        // 4 dp inside its circle, so it clears the one inside it when it's
-        // narrower than the gap between their circles; a small ring leaves out
-        // the ones that aren't.
+        // Each circle's strength just inside its left edge, above the horizon,
+        // and the rim's "no dBm" below it when the rim is drawn: sectors start
+        // due west, so no sector's middle, where its label goes, is ever there.
+        // Each label starts 4 dp inside its circle, so it clears the one inside
+        // it when it's narrower than the gap between their circles; a small
+        // ring leaves out the ones that aren't.
         var previous = RingScale.INNER * r
         for (dbm in RingScale.GUIDES) {
             val edge = RingScale.fraction(dbm, rim) * r
             val text = "$dbm"
             if (bandLabel.measureText(text) + 2 * density <= edge - previous) {
-                outlined(canvas, text, cx + edge - bandLabel.measureText(text) - 4 * density, cy - 4 * density, bandLabel)
+                outlined(canvas, text, cx - edge + 4 * density, cy - 4 * density, bandLabel)
             }
             previous = edge
         }
-        if (rim) {
-            val text = "no dBm"
-            outlined(canvas, text, cx + r - bandLabel.measureText(text) - 4 * density, cy + bandLabel.textSize + 2 * density, bandLabel)
-        }
+        if (rim) outlined(canvas, "no dBm", cx - r + 4 * density, cy + bandLabel.textSize + 2 * density, bandLabel)
     }
 
     /** Find mode's marks; canvas angles run clockwise from east, so the phone's top is -90. */
