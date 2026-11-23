@@ -507,7 +507,7 @@ dependencies = [
 
 [[package]]
 name = "sensio-cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "sensio-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "insta",
  "miniz_oxide",
@@ -530,7 +530,7 @@ dependencies = [
 
 [[package]]
 name = "sensio-sources"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "sensio-core",
  "serde",
