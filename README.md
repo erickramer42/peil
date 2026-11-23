@@ -1,31 +1,38 @@
 # Peil
 
-Nearby transmitters, loudest first. Peil lists the Wi-Fi and Bluetooth devices, aircraft and drones nearby. It reads what other programs already receive: an Android phone's own scans, and on a laptop, Kismet and readsb (ADS-B at 1090 MHz). GNSS gives them one clock and a position. It keeps metadata only (addresses, advertisements, signal strength), never anyone's communications. It's an early scaffold.
+_From Norwegian *peil*, a bearing; *radiopeiling* is radio direction finding._
 
-_*Peil* is Norwegian for a bearing; *radiopeiling* is radio direction finding._
+[![CI](https://github.com/erickramer42/peil/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/peil/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/erickramer42/peil)](https://github.com/erickramer42/peil/releases/latest)
 
-## What it does
+Nearby transmitters, loudest first. Peil lists the Wi-Fi and Bluetooth devices, aircraft and drones around a vehicle or a building, with each one's kind, strength, vendor and tracker network. It reads what other programs already receive (an Android phone's scans; on a laptop, Kismet and readsb) and keeps metadata only, never anyone's communications. [Download](https://github.com/erickramer42/peil/releases/latest).
 
-- Lists what's transmitting: each emitter's kind, signal band (strength, never distance), vendor, tracker network and Wi-Fi security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).
-  - The app, on Android 12 or later, draws them as a ring and a list; `peil describe` prints them.
-  - Aircraft from readsb, with their FAA registration in the US, and drones from their BLE Remote ID adverts, with distance and bearing from the vehicle ([ADR-0007](docs/adr/0007-aircraft-and-drones.md)).
-  - Mark your own devices to hide them; the [guide](docs/guide.md) has the rest.
-- Finds a BLE device, such as a tracker in your car: turn in place with the phone, and the ring, or the back camera's view, shows the direction it's strongest.
-- Adds a laptop: `peil link` sends Kismet's devices and readsb's aircraft to the app over USB tethering ([guide](docs/guide.md#the-laptop-link)).
-- Keeps each session's raw lines on the phone: `peil live` replays a saved feed, and the app or `peil summary` tells what it came to.
-- Flags a device heard during the vehicle's stops at two places, the one rule so far (`persistence.places`).
-- Installs from a release: `peil` for Linux on x86_64 and aarch64, and the signed APK ([CHANGELOG.md](CHANGELOG.md)).
+> [!NOTE]
+> **Experimental.** The tests and CI run on synthetic input only. Read [Use and privacy](#use-and-privacy) before running it.
 
 ## Engineering highlights
 
-- Peil reads its GPL sensor programs, such as Kismet, across a process boundary and never links them; CI's `deny` job holds every crate to a license allowlist ([ADR-0001](docs/adr/0001-scope-and-sensor-boundary.md)).
-- Every field from a radio is hostile input: validated, rejected without quoting its value, with `unsafe` forbidden and fuzz targets run in CI.
-- One Rust core runs on Linux and, built for Android, as a process inside the app ([ADR-0004](docs/adr/0004-android-app.md)).
-- The feed keeps each source's raw lines, so a saved session replays through a later build ([ADR-0002](docs/adr/0002-recordings-and-session-clock.md)).
+- **The GPL sensor tier stays across a process boundary.** Kismet and readsb are programs Peil reads, never links; CI's `deny` job holds every crate to a license allowlist ([ADR-0001](docs/adr/0001-scope-and-sensor-boundary.md)).
+- **Every radio field is hostile input.** Parsers check ranges and reject a line by number and reason, never value; `unsafe` is forbidden, and every parser is fuzzed in CI.
+- **Same feed, same bytes.** A saved session replays to identical output (`live_gives_the_same_bytes_twice`), through later builds too ([ADR-0002](docs/adr/0002-recordings-and-session-clock.md)); property tests check each live answer against a batch run.
+- **One core, two front ends.** The Rust core is the `peil` command on Linux and, built for arm64, a child process of the Android app: no JNI ([ADR-0004](docs/adr/0004-android-app.md)).
+- **Personal data kept out by design.** Events never hold a device's name or the networks a phone asks for; the bundled FAA registry leaves out registrants who are people.
+- **Checkable downloads.** Static Linux binaries and an APK signed in CI, with SHA-256 sums, a pinned certificate fingerprint and each linked crate's license.
+
+## What it does
+
+- **List what's transmitting:** each emitter's kind, signal band (strength, never distance), vendor, tracker network and Wi-Fi security ([ADR-0006](docs/adr/0006-emitter-picture-and-describe-layer.md)).
+  - The app, on Android 12 or later, draws them as a ring and a list; `peil describe` prints them.
+  - Aircraft from readsb, with their FAA registration in the US, and drones from their BLE Remote ID adverts, with distance and bearing from the vehicle ([ADR-0007](docs/adr/0007-aircraft-and-drones.md)).
+  - Mark your own devices to hide them; the [guide](docs/guide.md) has the rest.
+- **Point toward a BLE device** such as a tracker in your car: turn in place, and the ring or camera view shows where it read strongest, coarsely ([CHANGELOG.md](CHANGELOG.md)).
+- **Add a laptop:** `peil link` sends Kismet's devices and readsb's aircraft to the app over USB tethering ([guide](docs/guide.md#the-laptop-link)).
+- **Keep and replay a session:** the phone keeps each session's raw lines; `peil live` replays a saved feed, and the app or `peil summary` tells what it came to.
+- **One rule so far:** a device heard during the vehicle's stops at two places is flagged (`persistence.places`).
+- **Install a release:** `peil` for Linux on x86_64 and aarch64, and the signed APK ([CHANGELOG.md](CHANGELOG.md)).
 
 ## Status
 
-An early scaffold: its tests and CI run on synthetic input only. Not built yet: the gpsd adapter and Kismet's event stream. Nor are linking a BLE device across address rotations or the bridge to vehicle data. rtl_433 is unscheduled; tire-pressure sensors are not pursued. Each [ADR](docs/adr/README.md)'s Status line says what's built.
+Experimental, released as tagged versions; tests and CI run on synthetic input only. Not built yet: the gpsd adapter and Kismet's event stream. Nor are linking a BLE device across address rotations or the bridge to vehicle data. rtl_433 is unscheduled; tire-pressure sensors are not pursued. Each [ADR](docs/adr/README.md)'s Status line says what's built.
 
 ## How it fits together
 
