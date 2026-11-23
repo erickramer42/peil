@@ -1,7 +1,7 @@
 //! The laptop's side of the link: the Kismet poller against a fake Kismet,
 //! and a link session against a fake phone, both on loopback.
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
@@ -311,8 +311,9 @@ fn a_refused_hello_ends_the_session_with_the_reason() {
     let address = phone.local_addr().expect("address");
     let phone = thread::spawn(move || {
         let (mut stream, _) = phone.accept().expect("accept");
-        let mut hello = [0u8; 1];
-        let _ = stream.read(&mut hello);
+        // The whole hello: a close with unread bytes resets, and the refusal can be lost.
+        let mut reader = BufReader::new(stream.try_clone().expect("clone"));
+        receive(&mut reader);
         send(
             &mut stream,
             &LinkLine::Refused {
